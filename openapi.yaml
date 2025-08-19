@@ -1,0 +1,335 @@
+openapi: 3.0.3
+info:
+  title: OAuth 2.0 Client Credentials Service
+  description: |
+    A modern Rust HTTP service implementing OAuth 2.0 client credentials flow with client metadata
+    according to Aaron Parecki's OAuth Client ID Metadata Document draft specification.
+
+    This service demonstrates two different OAuth 2.0 authentication approaches:
+
+    **OAuth Client ID Metadata Approach:**
+    - Fixed JWT for OAuth client metadata flow (no parameters)
+    - Self-describing client with metadata document and JWKS
+
+    **Custom Private Key JWT Approach:**
+    - Customizable JWT for private_key_jwt authentication
+    - Accepts client_id parameter to override issuer/subject claims
+  version: 0.1.0
+  license:
+    name: Apache-2.0
+  contact:
+    name: GitHub Repository
+    url: https://github.com/seriousben/oauth-client-id-metadata-example
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+  - url: http://localhost:3002
+    description: Docker Compose server
+
+paths:
+  /health:
+    get:
+      summary: Health Check
+      description: Returns the health status of the service
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  service:
+                    type: string
+                    example: oauth-server
+
+  /token:
+    post:
+      summary: Get OAuth Client Metadata Token
+      description: |
+        Issues a JWT token using the OAuth Client Metadata approach. The token uses the service's
+        public URL as both issuer (iss) and subject (sub) claims. This represents the service's
+        fixed identity and does not accept any parameters.
+      operationId: getClientMetadataToken
+      responses:
+        '200':
+          description: Token issued successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /jwt:
+    post:
+      summary: Generate Custom JWT
+      description: |
+        Issues a customizable JWT for private_key_jwt authentication. Accepts optional client_id
+        and scope parameters. When client_id is provided, it overrides both the issuer (iss) and
+        subject (sub) claims, allowing testing of different client identities.
+      operationId: generateCustomJwt
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JwtRequest'
+            examples:
+              empty:
+                summary: Default service identity
+                value: {}
+              custom_client:
+                summary: Custom client identity
+                value:
+                  client_id: "my-app-prod"
+                  scope: "api:read"
+              full_params:
+                summary: Full customization
+                value:
+                  client_id: "my-service-staging"
+                  scope: "read write api:admin"
+      responses:
+        '200':
+          description: JWT generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '415':
+          description: Unsupported Media Type - Content-Type must be application/json
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /oauth-client:
+    get:
+      summary: Get OAuth Client Metadata
+      description: |
+        Returns the OAuth 2.0 client metadata document describing this service's capabilities.
+        Implements Aaron Parecki's OAuth Client ID Metadata Document draft specification.
+      operationId: getOAuthClientMetadata
+      responses:
+        '200':
+          description: Client metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthClientMetadata'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /jwks:
+    get:
+      summary: Get JSON Web Key Set
+      description: |
+        Returns the JSON Web Key Set (JWKS) containing the public keys used to verify
+        JWT tokens issued by this service. Used for token verification by authorization servers.
+      operationId: getJwks
+      responses:
+        '200':
+          description: JWKS retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JsonWebKeySet'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    JwtRequest:
+      type: object
+      properties:
+        client_id:
+          type: string
+          description: |
+            Optional custom client_id that overrides the default issuer and subject claims.
+            When provided, both 'iss' and 'sub' in the JWT will be set to this value.
+          example: "my-app-prod"
+        scope:
+          type: string
+          description: |
+            Optional scope for the token. If not provided, defaults to "read write".
+          example: "api:read api:write"
+      additionalProperties: false
+
+    TokenResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - expires_in
+        - scope
+      properties:
+        access_token:
+          type: string
+          description: The JWT access token (RS256 signed)
+          example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6ImtleS0xMjM0NTY3OCJ9..."
+        token_type:
+          type: string
+          enum: [Bearer]
+          description: Always "Bearer" for OAuth 2.0 compliance
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds (always 3600 = 1 hour)
+          example: 3600
+        scope:
+          type: string
+          description: The granted scope
+          example: "read write"
+
+    OAuthClientMetadata:
+      type: object
+      required:
+        - client_id
+        - client_name
+        - grant_types
+        - token_endpoint_auth_method
+        - token_endpoint_auth_signing_alg
+        - jwks_uri
+        - scope
+      properties:
+        client_id:
+          type: string
+          description: Unique identifier for this OAuth client
+          example: "oauth-client-id-metadata-example"
+        client_name:
+          type: string
+          description: Human-readable client name
+          example: "OAuth Client ID Metadata Example"
+        grant_types:
+          type: array
+          items:
+            type: string
+          description: Supported OAuth 2.0 grant types
+          example: ["client_credentials"]
+        token_endpoint_auth_method:
+          type: string
+          enum: [private_key_jwt]
+          description: Authentication method for token endpoint
+        token_endpoint_auth_signing_alg:
+          type: string
+          enum: [RS256]
+          description: Signing algorithm for JWT authentication
+        jwks_uri:
+          type: string
+          format: uri
+          description: URI where the public keys can be retrieved
+          example: "http://localhost:3002/jwks"
+        scope:
+          type: string
+          description: Default scope for this client
+          example: "read write"
+
+    JsonWebKeySet:
+      type: object
+      required:
+        - keys
+      properties:
+        keys:
+          type: array
+          description: Array of JSON Web Keys
+          items:
+            $ref: '#/components/schemas/JsonWebKey'
+
+    JsonWebKey:
+      type: object
+      required:
+        - kty
+        - alg
+        - kid
+        - n
+        - e
+      properties:
+        kty:
+          type: string
+          enum: [RSA]
+          description: Key type (always RSA for this service)
+        alg:
+          type: string
+          enum: [RS256]
+          description: Algorithm intended for use with this key
+        kid:
+          type: string
+          description: Key ID for key identification
+          example: "key-12345678"
+        n:
+          type: string
+          description: RSA modulus (base64url encoded)
+          example: "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtV..."
+        e:
+          type: string
+          description: RSA exponent (base64url encoded)
+          example: "AQAB"
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - error_description
+      properties:
+        error:
+          type: string
+          description: Error code
+          example: "server_error"
+        error_description:
+          type: string
+          description: Human-readable error description
+          example: "Failed to issue OAuth client metadata token"
+
+  examples:
+    HealthResponse:
+      summary: Healthy service response
+      value:
+        status: "healthy"
+        service: "oauth-server"
+
+    TokenResponseExample:
+      summary: Standard token response
+      value:
+        access_token: "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6ImtleS0xMjM0NTY3OCJ9.eyJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjMwMDIiLCJzdWIiOiJodHRwOi8vbG9jYWxob3N0OjMwMDIiLCJhdWQiOm51bGwsImV4cCI6MTcwMTEyMzQ1NiwiaWF0IjoxNzAxMTE5ODU2LCJqdGkiOiIxMjM0NTY3OC1hYmNkLWVmZ2gtaWprbC1tbm9wcXJzdHV2dyIsInNjb3BlIjoicmVhZCB3cml0ZSJ9.signature"
+        token_type: "Bearer"
+        expires_in: 3600
+        scope: "read write"
+
+    ClientMetadataExample:
+      summary: OAuth client metadata document
+      value:
+        client_id: "oauth-client-id-metadata-example"
+        client_name: "OAuth Client ID Metadata Example"
+        grant_types: ["client_credentials"]
+        token_endpoint_auth_method: "private_key_jwt"
+        token_endpoint_auth_signing_alg: "RS256"
+        jwks_uri: "http://localhost:3002/jwks"
+        scope: "read write"
+
+    JwksExample:
+      summary: JSON Web Key Set response
+      value:
+        keys:
+          - kty: "RSA"
+            alg: "RS256"
+            kid: "key-12345678"
+            n: "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbIS"
+            e: "AQAB"
