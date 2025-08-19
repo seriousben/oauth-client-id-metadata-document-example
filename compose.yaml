@@ -1,0 +1,15 @@
+services:
+  oauth-server:
+    build: .
+    ports:
+      - "3002:3000"
+    environment:
+      - RUST_LOG=debug
+      - PUBLIC_URL=http://localhost:3002
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

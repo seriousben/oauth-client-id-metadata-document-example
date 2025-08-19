@@ -1,0 +1,61 @@
+version: 2
+updates:
+  # Rust dependencies
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "seriousben"
+    assignees:
+      - "seriousben"
+    commit-message:
+      prefix: "cargo"
+      include: "scope"
+    groups:
+      rust-minor-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      rust-major-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+
+  # Docker dependencies
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "seriousben"
+    assignees:
+      - "seriousben"
+    commit-message:
+      prefix: "docker"
+      include: "scope"
+
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "seriousben"
+    assignees:
+      - "seriousben"
+    commit-message:
+      prefix: "actions"
+      include: "scope"

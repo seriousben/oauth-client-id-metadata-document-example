@@ -1,0 +1,59 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.89.0"
+repository = "https://github.com/seriousben/oauth-client-id-metadata-example"
+
+[workspace.lints.rust]
+nonstandard_style = "deny"
+rust_2018_idioms = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+
+[profile.release]
+lto = "thin"
+
+[workspace.dependencies]
+# Local crates
+oauth-metadata = { path = "crates/oauth-metadata" }
+
+# HTTP and server
+axum = "0.8"
+axum-test = "17"
+tokio = { version = "1.0", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+hyper = { version = "1.0", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# JWT and crypto
+jsonwebtoken = "9.3"
+rsa = { version = "0.9", features = ["sha2"] }
+rand = "0.8"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Utilities
+hex = "0.4"
+base64 = "0.22"
+uuid = { version = "1.0", features = ["v4"] }
+
+# Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Testing
+rstest = "0.23"
