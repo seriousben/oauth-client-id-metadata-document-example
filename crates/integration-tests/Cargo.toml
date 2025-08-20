@@ -29,5 +29,3 @@ anyhow.workspace = true
 # Utilities
 base64.workspace = true
 
-# Testing
-rstest.workspace = true

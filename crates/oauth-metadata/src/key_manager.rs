@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::Rng;
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use std::sync::Arc;
@@ -63,7 +64,7 @@ impl KeyManager {
     fn generate_key_id() -> String {
         let mut rng = rand::thread_rng();
         let random_bytes: [u8; 8] = rng.gen();
-        format!("key-{}", hex::encode(random_bytes))
+        format!("key-{}", URL_SAFE_NO_PAD.encode(random_bytes))
     }
 }
 

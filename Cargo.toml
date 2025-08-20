@@ -25,10 +25,8 @@ oauth-metadata = { path = "crates/oauth-metadata" }
 # HTTP and server
 axum = "0.8"
 axum-test = "17"
-tokio = { version = "1.0", features = ["full"] }
-tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace"] }
-hyper = { version = "1.0", features = ["full"] }
+tokio = { version = "1.0", features = ["net", "rt-multi-thread", "macros"] }
+tower-http = { version = "0.6", features = ["trace"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -44,7 +42,6 @@ anyhow = "1.0"
 thiserror = "1.0"
 
 # Utilities
-hex = "0.4"
 base64 = "0.22"
 uuid = { version = "1.0", features = ["v4"] }
 
@@ -55,5 +52,3 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Time
 chrono = { version = "0.4", features = ["serde"] }
 
-# Testing
-rstest = "0.23"

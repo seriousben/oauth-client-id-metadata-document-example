@@ -1,13 +1,11 @@
-use axum::http::StatusCode;
-use axum_test::TestServer;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use oauth_metadata::hello_oauth;
-use oauth_server::{create_app, create_app_with_state, AppState};
-use serde_json::Value;
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use axum::http::StatusCode;
+    use axum_test::TestServer;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    use oauth_metadata::hello_oauth;
+    use oauth_server::{create_app, create_app_with_state, AppState};
+    use serde_json::Value;
 
     #[test]
     fn test_integration_setup() {
@@ -51,7 +49,7 @@ mod tests {
         assert_eq!(metadata["scope"], "read write");
 
         // 4. Test OAuth client metadata token endpoint (no parameters)
-        let response = server.post("/token").await;
+        let response = server.post("/token").json(&serde_json::json!({})).await;
         response.assert_status_ok();
         let token_response: Value = response.json();
         assert_eq!(token_response["token_type"], "Bearer");
@@ -109,7 +107,7 @@ mod tests {
         assert_eq!(metadata["jwks_uri"], format!("{}/jwks", public_url));
 
         // Test that tokens use custom public URL as issuer/subject by default
-        let response = server.post("/token").await;
+        let response = server.post("/token").json(&serde_json::json!({})).await;
         response.assert_status_ok();
         let token_response: Value = response.json();
 
@@ -136,7 +134,7 @@ mod tests {
         let app = create_app();
         let server = TestServer::new(app).unwrap();
 
-        let response = server.post("/token").await;
+        let response = server.post("/token").json(&serde_json::json!({})).await;
         response.assert_status_ok();
         let token_response: Value = response.json();
 
@@ -213,5 +211,226 @@ mod tests {
 
         assert_eq!(tokens.len(), 5);
         assert_eq!(unique_tokens.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_configurable_audience_single() {
+        use oauth_metadata::JwtIssuer;
+
+        // Test with single audience
+        let audience = Some(JwtIssuer::audience_from_string("api.example.com"));
+        let state = AppState::new_with_public_url_and_audience(
+            "http://localhost:3000".to_string(),
+            audience,
+        )
+        .unwrap();
+        let app = create_app_with_state(state);
+        let server = TestServer::new(app).unwrap();
+
+        // Test token endpoint
+        let response = server.post("/token").json(&serde_json::json!({})).await;
+        response.assert_status_ok();
+        let token_response: Value = response.json();
+
+        let access_token = token_response["access_token"].as_str().unwrap();
+        let parts: Vec<&str> = access_token.split('.').collect();
+        let payload_decoded = URL_SAFE_NO_PAD.decode(parts[1]).unwrap();
+        let payload_json: Value = serde_json::from_slice(&payload_decoded).unwrap();
+
+        // Should have audience claim as string
+        assert_eq!(payload_json["aud"], "api.example.com");
+
+        // Test JWT endpoint
+        let response = server
+            .post("/jwt")
+            .json(&serde_json::json!({
+                "client_id": "test-client"
+            }))
+            .await;
+        response.assert_status_ok();
+        let jwt_response: Value = response.json();
+
+        let jwt_access_token = jwt_response["access_token"].as_str().unwrap();
+        let jwt_parts: Vec<&str> = jwt_access_token.split('.').collect();
+        let jwt_payload_decoded = URL_SAFE_NO_PAD.decode(jwt_parts[1]).unwrap();
+        let jwt_payload_json: Value = serde_json::from_slice(&jwt_payload_decoded).unwrap();
+
+        // Should also have audience claim
+        assert_eq!(jwt_payload_json["aud"], "api.example.com");
+    }
+
+    #[tokio::test]
+    async fn test_configurable_audience_multiple() {
+        use oauth_metadata::JwtIssuer;
+
+        // Test with multiple audiences
+        let audience = Some(JwtIssuer::audience_from_strings(&[
+            "api1.example.com",
+            "api2.example.com",
+        ]));
+        let state = AppState::new_with_public_url_and_audience(
+            "http://localhost:3000".to_string(),
+            audience,
+        )
+        .unwrap();
+        let app = create_app_with_state(state);
+        let server = TestServer::new(app).unwrap();
+
+        let response = server.post("/token").json(&serde_json::json!({})).await;
+        response.assert_status_ok();
+        let token_response: Value = response.json();
+
+        let access_token = token_response["access_token"].as_str().unwrap();
+        let parts: Vec<&str> = access_token.split('.').collect();
+        let payload_decoded = URL_SAFE_NO_PAD.decode(parts[1]).unwrap();
+        let payload_json: Value = serde_json::from_slice(&payload_decoded).unwrap();
+
+        // Should have audience claim as array
+        assert!(payload_json["aud"].is_array());
+        let aud_array = payload_json["aud"].as_array().unwrap();
+        assert_eq!(aud_array.len(), 2);
+        assert_eq!(aud_array[0], "api1.example.com");
+        assert_eq!(aud_array[1], "api2.example.com");
+    }
+
+    #[tokio::test]
+    async fn test_no_audience_configuration() {
+        // Test with no audience configured (should be None/omitted)
+        let state =
+            AppState::new_with_public_url_and_audience("http://localhost:3000".to_string(), None)
+                .unwrap();
+        let app = create_app_with_state(state);
+        let server = TestServer::new(app).unwrap();
+
+        let response = server.post("/token").json(&serde_json::json!({})).await;
+        response.assert_status_ok();
+        let token_response: Value = response.json();
+
+        let access_token = token_response["access_token"].as_str().unwrap();
+        let parts: Vec<&str> = access_token.split('.').collect();
+        let payload_decoded = URL_SAFE_NO_PAD.decode(parts[1]).unwrap();
+        let payload_json: Value = serde_json::from_slice(&payload_decoded).unwrap();
+
+        // Should not have audience claim
+        assert!(
+            payload_json["aud"].is_null() || !payload_json.as_object().unwrap().contains_key("aud")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_audience_appending_from_request_body() {
+        use oauth_metadata::JwtIssuer;
+
+        // Set up base audience in environment
+        let base_audience = Some(JwtIssuer::audience_from_string("env.example.com"));
+        let state = AppState::new_with_public_url_and_audience(
+            "http://localhost:3000".to_string(),
+            base_audience,
+        )
+        .unwrap();
+        let app = create_app_with_state(state);
+        let server = TestServer::new(app).unwrap();
+
+        // Test token endpoint with additional audience in POST body
+        let response = server
+            .post("/token")
+            .json(&serde_json::json!({
+                "aud": "request.example.com"
+            }))
+            .await;
+        response.assert_status_ok();
+
+        let token_response: Value = response.json();
+        let access_token = token_response["access_token"].as_str().unwrap();
+        let parts: Vec<&str> = access_token.split('.').collect();
+        let payload_decoded = URL_SAFE_NO_PAD.decode(parts[1]).unwrap();
+        let payload_json: Value = serde_json::from_slice(&payload_decoded).unwrap();
+
+        // Should have both audiences as array
+        assert!(payload_json["aud"].is_array());
+        let aud_array = payload_json["aud"].as_array().unwrap();
+        assert_eq!(aud_array.len(), 2);
+        // Environment audience comes first, then request audience
+        assert!(aud_array.contains(&serde_json::Value::String("env.example.com".to_string())));
+        assert!(aud_array.contains(&serde_json::Value::String(
+            "request.example.com".to_string()
+        )));
+    }
+
+    #[tokio::test]
+    async fn test_audience_appending_with_multiple_request_audiences() {
+        use oauth_metadata::JwtIssuer;
+
+        // Set up base audience in environment
+        let base_audience = Some(JwtIssuer::audience_from_strings(&[
+            "env1.example.com",
+            "env2.example.com",
+        ]));
+        let state = AppState::new_with_public_url_and_audience(
+            "http://localhost:3000".to_string(),
+            base_audience,
+        )
+        .unwrap();
+        let app = create_app_with_state(state);
+        let server = TestServer::new(app).unwrap();
+
+        // Test JWT endpoint with multiple additional audiences
+        let response = server
+            .post("/jwt")
+            .json(&serde_json::json!({
+                "client_id": "test-client",
+                "aud": ["req1.example.com", "req2.example.com"]
+            }))
+            .await;
+        response.assert_status_ok();
+
+        let jwt_response: Value = response.json();
+        let jwt_access_token = jwt_response["access_token"].as_str().unwrap();
+        let jwt_parts: Vec<&str> = jwt_access_token.split('.').collect();
+        let jwt_payload_decoded = URL_SAFE_NO_PAD.decode(jwt_parts[1]).unwrap();
+        let jwt_payload_json: Value = serde_json::from_slice(&jwt_payload_decoded).unwrap();
+
+        // Should have all 4 audiences as array
+        assert!(jwt_payload_json["aud"].is_array());
+        let aud_array = jwt_payload_json["aud"].as_array().unwrap();
+        assert_eq!(aud_array.len(), 4);
+
+        // Check that all audiences are present
+        let expected_audiences = vec![
+            "env1.example.com",
+            "env2.example.com",
+            "req1.example.com",
+            "req2.example.com",
+        ];
+        for expected in expected_audiences {
+            assert!(aud_array.contains(&serde_json::Value::String(expected.to_string())));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_request_audience_only() {
+        // Test with no environment audience, only request audience
+        let state =
+            AppState::new_with_public_url_and_audience("http://localhost:3000".to_string(), None)
+                .unwrap();
+        let app = create_app_with_state(state);
+        let server = TestServer::new(app).unwrap();
+
+        let response = server
+            .post("/token")
+            .json(&serde_json::json!({
+                "aud": "only.request.com"
+            }))
+            .await;
+        response.assert_status_ok();
+
+        let token_response: Value = response.json();
+        let access_token = token_response["access_token"].as_str().unwrap();
+        let parts: Vec<&str> = access_token.split('.').collect();
+        let payload_decoded = URL_SAFE_NO_PAD.decode(parts[1]).unwrap();
+        let payload_json: Value = serde_json::from_slice(&payload_decoded).unwrap();
+
+        // Should have single audience as string (not array)
+        assert_eq!(payload_json["aud"], "only.request.com");
     }
 }

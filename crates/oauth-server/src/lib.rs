@@ -18,6 +18,19 @@ pub struct JwtParams {
     pub client_id: Option<String>,
     /// Requested scope
     pub scope: Option<String>,
+    /// Additional audience(s) to append to configured audience
+    /// Can be a string or array of strings
+    pub aud: Option<serde_json::Value>,
+}
+
+/// Parameters for the token endpoint (JSON body) - OAuth client metadata approach
+#[derive(Debug, Deserialize, Default)]
+pub struct TokenParams {
+    /// Requested scope (default: "read write")
+    pub scope: Option<String>,
+    /// Additional audience(s) to append to configured audience
+    /// Can be a string or array of strings
+    pub aud: Option<serde_json::Value>,
 }
 
 /// Application state containing shared components
@@ -41,7 +54,11 @@ impl AppState {
     /// Create new application state with specific public URL
     pub fn new_with_public_url(public_url: String) -> anyhow::Result<Self> {
         let key_manager = KeyManager::new()?;
-        let jwt_issuer = JwtIssuer::new(key_manager.clone(), public_url.clone());
+
+        // Parse audience from environment variable
+        let audience = Self::parse_audience_from_env();
+        let jwt_issuer =
+            JwtIssuer::new_with_audience(key_manager.clone(), public_url.clone(), audience);
 
         let jwks_uri = format!("{}/jwks", public_url);
         let client_metadata = OAuthClientMetadata::default_client_credentials(
@@ -57,6 +74,62 @@ impl AppState {
             client_metadata: Arc::new(client_metadata),
             jwks: Arc::new(jwks),
         })
+    }
+
+    /// Create new application state with specific public URL and audience
+    pub fn new_with_public_url_and_audience(
+        public_url: String,
+        audience: Option<serde_json::Value>,
+    ) -> anyhow::Result<Self> {
+        let key_manager = KeyManager::new()?;
+        let jwt_issuer =
+            JwtIssuer::new_with_audience(key_manager.clone(), public_url.clone(), audience);
+
+        let jwks_uri = format!("{}/jwks", public_url);
+        let client_metadata = OAuthClientMetadata::default_client_credentials(
+            "oauth-client-id-metadata-example",
+            &jwks_uri,
+        );
+
+        let jwks = JsonWebKeySet::from_key_manager(&key_manager)?;
+
+        Ok(Self {
+            key_manager: Arc::new(key_manager),
+            jwt_issuer: Arc::new(jwt_issuer),
+            client_metadata: Arc::new(client_metadata),
+            jwks: Arc::new(jwks),
+        })
+    }
+
+    /// Parse audience configuration from environment variable
+    /// Supports single audience (JWT_AUDIENCE=example.com) or multiple audiences (JWT_AUDIENCE=api1.com,api2.com)
+    fn parse_audience_from_env() -> Option<serde_json::Value> {
+        if let Ok(aud_env) = std::env::var("JWT_AUDIENCE") {
+            let aud_trimmed = aud_env.trim();
+            if aud_trimmed.is_empty() {
+                return None;
+            }
+
+            // Check if it contains commas (multiple audiences)
+            if aud_trimmed.contains(',') {
+                let audiences: Vec<&str> = aud_trimmed
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+
+                if audiences.is_empty() {
+                    None
+                } else {
+                    Some(JwtIssuer::audience_from_strings(&audiences))
+                }
+            } else {
+                // Single audience
+                Some(JwtIssuer::audience_from_string(aud_trimmed))
+            }
+        } else {
+            None
+        }
     }
 }
 
@@ -95,11 +168,16 @@ pub async fn health_check() -> (StatusCode, Json<Value>) {
     )
 }
 
-pub async fn token_endpoint(State(state): State<AppState>) -> (StatusCode, Json<Value>) {
-    // OAuth client metadata token - uses public URL as iss/sub, no customization
+pub async fn token_endpoint(
+    State(state): State<AppState>,
+    Json(params): Json<TokenParams>,
+) -> (StatusCode, Json<Value>) {
+    // OAuth client metadata token - uses public URL as iss/sub, with optional customization
+    let scope = params.scope.or_else(|| Some("read write".to_string()));
+
     match state
         .jwt_issuer
-        .create_client_credentials_response(Some("read write".to_string()))
+        .create_client_credentials_response_with_audience(scope, None, params.aud)
     {
         Ok(response) => (
             StatusCode::OK,
@@ -124,7 +202,7 @@ pub async fn jwt_endpoint(
 
     match state
         .jwt_issuer
-        .create_client_credentials_response_with_client_id(scope, params.client_id)
+        .create_client_credentials_response_with_audience(scope, params.client_id, params.aud)
     {
         Ok(response) => (
             StatusCode::OK,
@@ -189,7 +267,7 @@ mod tests {
         let app = create_app();
         let server = TestServer::new(app).unwrap();
 
-        let response = server.post("/token").await;
+        let response = server.post("/token").json(&serde_json::json!({})).await;
         response.assert_status_ok();
 
         let json: Value = response.json();
@@ -296,7 +374,7 @@ mod tests {
         let server = TestServer::new(app).unwrap();
 
         // Both endpoints should work but serve different purposes
-        let token_response = server.post("/token").await;
+        let token_response = server.post("/token").json(&serde_json::json!({})).await;
         token_response.assert_status_ok();
 
         let jwt_response = server
@@ -313,5 +391,153 @@ mod tests {
         assert_eq!(jwt_json["token_type"], "Bearer");
         assert_eq!(token_json["scope"], "read write");
         assert_eq!(jwt_json["scope"], "read write");
+    }
+
+    #[tokio::test]
+    async fn test_jwt_endpoint_with_single_audience() {
+        let audience = JwtIssuer::audience_from_string("api.example.com");
+        let state = AppState::new_with_public_url_and_audience(
+            "http://localhost:3000".to_string(),
+            Some(audience),
+        )
+        .unwrap();
+        let app = create_app_with_state(state);
+        let server = TestServer::new(app).unwrap();
+
+        let response = server.post("/jwt").json(&serde_json::json!({})).await;
+        response.assert_status_ok();
+
+        let json: Value = response.json();
+        assert_eq!(json["token_type"], "Bearer");
+
+        // The JWT should contain the configured audience (we can't easily decode it in tests,
+        // but we can verify the request was processed successfully)
+        let access_token = json["access_token"].as_str().unwrap();
+        assert!(!access_token.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_jwt_endpoint_with_multiple_audiences() {
+        let audience = JwtIssuer::audience_from_strings(&["api1.example.com", "api2.example.com"]);
+        let state = AppState::new_with_public_url_and_audience(
+            "http://localhost:3000".to_string(),
+            Some(audience),
+        )
+        .unwrap();
+        let app = create_app_with_state(state);
+        let server = TestServer::new(app).unwrap();
+
+        let response = server.post("/token").json(&serde_json::json!({})).await;
+        response.assert_status_ok();
+
+        let json: Value = response.json();
+        assert_eq!(json["token_type"], "Bearer");
+
+        // The JWT should contain the configured audiences
+        let access_token = json["access_token"].as_str().unwrap();
+        assert!(!access_token.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_audience_parsing_functions() {
+        // Test single audience
+        let single_aud = JwtIssuer::audience_from_string("api.example.com");
+        assert_eq!(
+            single_aud,
+            serde_json::Value::String("api.example.com".to_string())
+        );
+
+        // Test multiple audiences
+        let multi_aud = JwtIssuer::audience_from_strings(&["api1.com", "api2.com"]);
+        let expected = serde_json::Value::Array(vec![
+            serde_json::Value::String("api1.com".to_string()),
+            serde_json::Value::String("api2.com".to_string()),
+        ]);
+        assert_eq!(multi_aud, expected);
+    }
+
+    #[tokio::test]
+    async fn test_token_endpoint_with_additional_audience() {
+        // Test token endpoint with additional audience in POST body
+        let base_audience = JwtIssuer::audience_from_string("api.example.com");
+        let state = AppState::new_with_public_url_and_audience(
+            "http://localhost:3000".to_string(),
+            Some(base_audience),
+        )
+        .unwrap();
+        let app = create_app_with_state(state);
+        let server = TestServer::new(app).unwrap();
+
+        let response = server
+            .post("/token")
+            .json(&serde_json::json!({
+                "aud": "extra.example.com"
+            }))
+            .await;
+        response.assert_status_ok();
+
+        let json: Value = response.json();
+        assert_eq!(json["token_type"], "Bearer");
+        assert_eq!(json["scope"], "read write");
+    }
+
+    #[tokio::test]
+    async fn test_jwt_endpoint_with_additional_audience() {
+        // Test JWT endpoint with additional audience in POST body
+        let base_audience = JwtIssuer::audience_from_string("api.example.com");
+        let state = AppState::new_with_public_url_and_audience(
+            "http://localhost:3000".to_string(),
+            Some(base_audience),
+        )
+        .unwrap();
+        let app = create_app_with_state(state);
+        let server = TestServer::new(app).unwrap();
+
+        let response = server
+            .post("/jwt")
+            .json(&serde_json::json!({
+                "client_id": "test-client",
+                "aud": ["extra1.example.com", "extra2.example.com"]
+            }))
+            .await;
+        response.assert_status_ok();
+
+        let json: Value = response.json();
+        assert_eq!(json["token_type"], "Bearer");
+        assert_eq!(json["scope"], "read write");
+    }
+
+    #[tokio::test]
+    async fn test_token_endpoint_with_custom_scope_and_audience() {
+        let app = create_app();
+        let server = TestServer::new(app).unwrap();
+
+        let response = server
+            .post("/token")
+            .json(&serde_json::json!({
+                "scope": "custom-scope",
+                "aud": "custom.audience.com"
+            }))
+            .await;
+        response.assert_status_ok();
+
+        let json: Value = response.json();
+        assert_eq!(json["token_type"], "Bearer");
+        assert_eq!(json["scope"], "custom-scope");
+    }
+
+    #[tokio::test]
+    async fn test_endpoints_with_empty_json_body() {
+        // Test that endpoints still work with empty JSON bodies
+        let app = create_app();
+        let server = TestServer::new(app).unwrap();
+
+        // Test token endpoint with empty body
+        let response = server.post("/token").json(&serde_json::json!({})).await;
+        response.assert_status_ok();
+
+        // Test JWT endpoint with empty body
+        let response = server.post("/jwt").json(&serde_json::json!({})).await;
+        response.assert_status_ok();
     }
 }
