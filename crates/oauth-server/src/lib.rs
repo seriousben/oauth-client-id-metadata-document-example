@@ -1,6 +1,6 @@
 use axum::{
-    extract::State,
-    http::StatusCode,
+    extract::{Request, State},
+    http::{header::CONTENT_TYPE, StatusCode},
     response::Json,
     routing::{get, post},
     Router,
@@ -11,8 +11,63 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
 
+/// Helper function to extract JSON body or default if empty/no content-type
+async fn extract_json_or_default<T>(request: Request) -> Result<T, (StatusCode, Json<Value>)>
+where
+    T: for<'de> Deserialize<'de> + Default,
+{
+    let (parts, body) = request.into_parts();
+    let bytes = match axum::body::to_bytes(body, usize::MAX).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "invalid_request",
+                    "error_description": "Failed to read request body"
+                })),
+            ))
+        }
+    };
+
+    // If body is empty, return default
+    if bytes.is_empty() {
+        return Ok(T::default());
+    }
+
+    // Check content type if body is not empty
+    let content_type = parts
+        .headers
+        .get(CONTENT_TYPE)
+        .and_then(|ct| ct.to_str().ok())
+        .unwrap_or("");
+
+    // If there's content but no JSON content-type, return 415
+    if !content_type.starts_with("application/json") && !bytes.is_empty() {
+        return Err((
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            Json(json!({
+                "error": "unsupported_media_type",
+                "error_description": "Content-Type must be application/json for non-empty request body"
+            })),
+        ));
+    }
+
+    // Try to parse as JSON
+    match serde_json::from_slice(&bytes) {
+        Ok(data) => Ok(data),
+        Err(_) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "invalid_request",
+                "error_description": "Invalid JSON in request body"
+            })),
+        )),
+    }
+}
+
 /// Parameters for the JWT endpoint (JSON body)
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct JwtParams {
     /// Custom client_id that overrides the default issuer and subject
     pub client_id: Option<String>,
@@ -170,8 +225,9 @@ pub async fn health_check() -> (StatusCode, Json<Value>) {
 
 pub async fn token_endpoint(
     State(state): State<AppState>,
-    Json(params): Json<TokenParams>,
-) -> (StatusCode, Json<Value>) {
+    request: Request,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    let params = extract_json_or_default::<TokenParams>(request).await?;
     // OAuth client metadata token - uses public URL as iss/sub, with optional customization
     let scope = params.scope.or_else(|| Some("read write".to_string()));
 
@@ -179,24 +235,25 @@ pub async fn token_endpoint(
         .jwt_issuer
         .create_client_credentials_response_with_audience(scope, None, params.aud)
     {
-        Ok(response) => (
+        Ok(response) => Ok((
             StatusCode::OK,
             Json(serde_json::to_value(response).unwrap_or_default()),
-        ),
-        Err(_) => (
+        )),
+        Err(_) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({
                 "error": "server_error",
                 "error_description": "Failed to issue OAuth client metadata token"
             })),
-        ),
+        )),
     }
 }
 
 pub async fn jwt_endpoint(
     State(state): State<AppState>,
-    Json(params): Json<JwtParams>,
-) -> (StatusCode, Json<Value>) {
+    request: Request,
+) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
+    let params = extract_json_or_default::<JwtParams>(request).await?;
     // Custom JWT for private_key_jwt - allows client_id customization
     let scope = params.scope.or_else(|| Some("read write".to_string()));
 
@@ -204,17 +261,17 @@ pub async fn jwt_endpoint(
         .jwt_issuer
         .create_client_credentials_response_with_audience(scope, params.client_id, params.aud)
     {
-        Ok(response) => (
+        Ok(response) => Ok((
             StatusCode::OK,
             Json(serde_json::to_value(response).unwrap_or_default()),
-        ),
-        Err(_) => (
+        )),
+        Err(_) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({
                 "error": "server_error",
                 "error_description": "Failed to issue custom JWT"
             })),
-        ),
+        )),
     }
 }
 
@@ -539,5 +596,53 @@ mod tests {
         // Test JWT endpoint with empty body
         let response = server.post("/jwt").json(&serde_json::json!({})).await;
         response.assert_status_ok();
+    }
+
+    #[tokio::test]
+    async fn test_endpoints_with_no_body() {
+        // Test that endpoints work without any body or content-type
+        let app = create_app();
+        let server = TestServer::new(app).unwrap();
+
+        // Test token endpoint with no body
+        let response = server.post("/token").await;
+        response.assert_status_ok();
+
+        let json: Value = response.json();
+        assert_eq!(json["token_type"], "Bearer");
+        assert_eq!(json["expires_in"], 3600);
+        assert_eq!(json["scope"], "read write");
+
+        // Test JWT endpoint with no body
+        let response = server.post("/jwt").await;
+        response.assert_status_ok();
+
+        let json: Value = response.json();
+        assert_eq!(json["token_type"], "Bearer");
+        assert_eq!(json["expires_in"], 3600);
+        assert_eq!(json["scope"], "read write");
+    }
+
+    #[tokio::test]
+    async fn test_endpoints_with_invalid_content_type() {
+        // Test that endpoints reject non-empty body with wrong content-type
+        let app = create_app();
+        let server = TestServer::new(app).unwrap();
+
+        // Test token endpoint with plain text body - should fail
+        let response = server
+            .post("/token")
+            .add_header("Content-Type", "text/plain")
+            .text("some text")
+            .await;
+        response.assert_status(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+
+        // Test JWT endpoint with form data - should fail
+        let response = server
+            .post("/jwt")
+            .add_header("Content-Type", "application/x-www-form-urlencoded")
+            .text("key=value")
+            .await;
+        response.assert_status(StatusCode::UNSUPPORTED_MEDIA_TYPE);
     }
 }

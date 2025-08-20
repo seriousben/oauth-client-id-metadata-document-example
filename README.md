@@ -191,6 +191,9 @@ Response:
 **JSON Parameters:**
 - `client_id` (optional) - Override issuer and subject claims
 - `scope` (optional) - Custom scope for the token
+- `aud` (optional) - Additional audience(s) to append to configured audience
+  - Single: `"aud": "extra.example.com"`
+  - Multiple: `"aud": ["extra1.example.com", "extra2.example.com"]`
 
 ### Common Endpoints
 
@@ -257,6 +260,38 @@ echo "Production client iss/sub: myapp-prod"
 echo "Staging client iss/sub: myapp-staging"
 ```
 
+### Example 4: JWT Audience Configuration
+
+Configure audiences for tokens to specify which services can accept them.
+
+```bash
+# Start service with configured audiences
+docker run -p 3002:3000 \
+  -e PUBLIC_URL=http://localhost:3002 \
+  -e JWT_AUDIENCE=api.example.com,auth.example.com \
+  -e RUST_LOG=info \
+  ghcr.io/seriousben/oauth-client-id-metadata-example:latest
+
+# Generate token with base audiences only
+BASE_TOKEN=$(curl -s -X POST http://localhost:3002/token | jq -r .access_token)
+echo "Base audiences:"
+echo $BASE_TOKEN | cut -d'.' -f2 | base64 -d | jq .aud
+
+# Generate token with additional audience
+EXTRA_TOKEN=$(curl -s -X POST http://localhost:3002/jwt \
+  -H "Content-Type: application/json" \
+  -d '{"aud":"extra.service.com"}' | jq -r .access_token)
+echo "With additional audience:"
+echo $EXTRA_TOKEN | cut -d'.' -f2 | base64 -d | jq .aud
+
+# Generate token with multiple additional audiences
+MULTI_TOKEN=$(curl -s -X POST http://localhost:3002/jwt \
+  -H "Content-Type: application/json" \
+  -d '{"aud":["extra1.com","extra2.com"]}' | jq -r .access_token)
+echo "With multiple additional audiences:"
+echo $MULTI_TOKEN | cut -d'.' -f2 | base64 -d | jq .aud
+```
+
 ### Example 3: Testing Authorization Server
 
 Use this service to test how an authorization server handles both approaches.
@@ -286,6 +321,9 @@ curl -X POST "$AUTH_SERVER/token" \
 
 - `PUBLIC_URL` - The public URL of the service (default: `http://localhost:3000`)
 - `RUST_LOG` - Log level (default: `info`)
+- `JWT_AUDIENCE` - Audience claim(s) for JWT tokens (optional)
+  - Single audience: `JWT_AUDIENCE=api.example.com`
+  - Multiple audiences: `JWT_AUDIENCE=api1.example.com,api2.example.com`
 
 ### Docker Compose Configuration
 
@@ -298,6 +336,7 @@ services:
     environment:
       - RUST_LOG=debug
       - PUBLIC_URL=http://localhost:3002
+      - JWT_AUDIENCE=api.example.com,auth.example.com
 ```
 
 ## Token Details
@@ -306,7 +345,7 @@ The service issues RS256-signed JWT tokens with the following claims:
 
 - `iss` (issuer) - Public URL or custom client_id
 - `sub` (subject) - Public URL or custom client_id
-- `aud` (audience) - Optional
+- `aud` (audience) - Configurable via `JWT_AUDIENCE` environment variable or request body
 - `exp` (expiration) - Current time + 1 hour
 - `iat` (issued at) - Current timestamp
 - `jti` (JWT ID) - Unique identifier
@@ -316,6 +355,9 @@ The service issues RS256-signed JWT tokens with the following claims:
 
 - **Without client_id**: Uses `PUBLIC_URL` for both `iss` and `sub` claims
 - **With client_id**: Uses the provided `client_id` for both `iss` and `sub` claims
+- **Without JWT_AUDIENCE**: No audience claims in tokens
+- **With JWT_AUDIENCE**: Base audience(s) included in all tokens
+- **Request body `aud`**: Additional audiences appended to base audiences
 
 ## Development
 
