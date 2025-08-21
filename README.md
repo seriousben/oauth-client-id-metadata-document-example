@@ -35,10 +35,10 @@ curl https://oauth-client.example.com/oauth-client
 curl https://oauth-client.example.com/jwks
 
 # Client ID Metadata Document approach token endpoint
-curl -X POST https://oauth-client.example.com/token
+curl -X POST https://oauth-client.example.com/client-id-document-token
 
 # Pre-registered client private_key_jwt authentication token endpoint
-curl -X POST https://oauth-client.example.com/jwt
+curl -X POST https://oauth-client.example.com/private-key-jwt-token
 ```
 
 ## 2. Introduction
@@ -130,11 +130,11 @@ This method implements RFC 7523 JWT Profile for OAuth 2.0 Client Authentication 
 
 **Response**: JSON document containing client metadata with `application/json` content type.
 
-### 6.2. Token Endpoint (Client Metadata Approach)
+### 6.2. Client ID Metadata Document Token Endpoint
 
-**Endpoint**: `POST /token`
+**Endpoint**: `POST /client-id-document-token`
 
-**Description**: Issues JWT access token using client metadata approach where client identity is derived from service metadata.
+**Description**: Issues JWT access token using Client ID Metadata Document approach where client identity is derived from service metadata.
 
 **Request Body**: Optional JSON object containing:
 - `scope` (optional): Requested OAuth 2.0 scope
@@ -142,11 +142,11 @@ This method implements RFC 7523 JWT Profile for OAuth 2.0 Client Authentication 
 
 **Response**: OAuth 2.0 access token response as specified in RFC 6749 Section 5.1.
 
-### 6.3. JWT Generation Endpoint (private_key_jwt)
+### 6.3. Pre-registered Client Token Endpoint (private_key_jwt)
 
-**Endpoint**: `POST /jwt`
+**Endpoint**: `POST /private-key-jwt-token`
 
-**Description**: Generates customizable JWT for private_key_jwt authentication method as specified in RFC 7523.
+**Description**: Generates customizable JWT for pre-registered client private_key_jwt authentication method as specified in RFC 7523.
 
 **Request Body**: Optional JSON object containing:
 - `client_id` (optional): Override for issuer and subject claims
@@ -232,7 +232,7 @@ curl -X POST https://your-auth-server.com/clients \
 
 ```bash
 # 1. Generate client JWT using Client ID Metadata Document approach
-CLIENT_JWT=$(curl -s -X POST https://oauth-client.example.com/token | jq -r .access_token)
+CLIENT_JWT=$(curl -s -X POST https://oauth-client.example.com/client-id-document-token | jq -r .access_token)
 
 # 2. Test your authorization server's token endpoint with the client JWT
 curl -X POST https://your-auth-server.com/token \
@@ -240,7 +240,7 @@ curl -X POST https://your-auth-server.com/token \
   -d "grant_type=client_credentials&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&client_assertion=$CLIENT_JWT"
 
 # 3. Alternative: Generate JWT with specific client identity for testing
-CUSTOM_JWT=$(curl -s -X POST https://oauth-client.example.com/jwt \
+CUSTOM_JWT=$(curl -s -X POST https://oauth-client.example.com/private-key-jwt-token \
   -H "Content-Type: application/json" \
   -d '{"client_id": "test-client-123", "scope": "api:read"}' | jq -r .access_token)
 
@@ -254,11 +254,11 @@ curl -X POST https://your-auth-server.com/token \
 
 ```bash
 # 1. Generate JWT with various client identities to test authorization server validation
-PROD_JWT=$(curl -s -X POST https://oauth-client.example.com/jwt \
+PROD_JWT=$(curl -s -X POST https://oauth-client.example.com/private-key-jwt-token \
   -H "Content-Type: application/json" \
   -d '{"client_id": "my-service-prod", "scope": "api:read api:write"}' | jq -r .access_token)
 
-STAGING_JWT=$(curl -s -X POST https://oauth-client.example.com/jwt \
+STAGING_JWT=$(curl -s -X POST https://oauth-client.example.com/private-key-jwt-token \
   -H "Content-Type: application/json" \
   -d '{"client_id": "my-service-staging", "scope": "api:read"}' | jq -r .access_token)
 
@@ -278,10 +278,10 @@ curl -X POST https://your-auth-server.com/token \
 
 ```bash
 # Token with base audiences (from JWT_AUDIENCE environment variable)
-curl -X POST https://oauth-client.example.com/token
+curl -X POST https://oauth-client.example.com/client-id-document-token
 
 # Token with additional audience appended to base audiences
-curl -X POST https://oauth-client.example.com/jwt \
+curl -X POST https://oauth-client.example.com/private-key-jwt-token \
   -H "Content-Type: application/json" \
   -d '{"aud": "https://extra-service.example.com"}'
 ```
@@ -290,7 +290,7 @@ curl -X POST https://oauth-client.example.com/jwt \
 
 ```bash
 # Retrieve and decode access token
-TOKEN=$(curl -s -X POST https://oauth-client.example.com/token | jq -r .access_token)
+TOKEN=$(curl -s -X POST https://oauth-client.example.com/client-id-document-token | jq -r .access_token)
 
 # Decode JWT header
 echo $TOKEN | cut -d'.' -f1 | base64 -d | jq .

@@ -87,7 +87,7 @@ echo ""
 
 # 2. Default token
 echo -e "${YELLOW}2. Default token (uses PUBLIC_URL for iss/sub):${NC}"
-DEFAULT_TOKEN=$(curl -s -X POST http://localhost:${TEST_PORT}/token | jq -r .access_token)
+DEFAULT_TOKEN=$(curl -s -X POST http://localhost:${TEST_PORT}/client-id-document-token | jq -r .access_token)
 echo "Token payload:"
 echo $DEFAULT_TOKEN | cut -d'.' -f2 | base64 -d | jq .
 echo ""
@@ -106,7 +106,7 @@ echo ""
 
 # 3. Custom client_id JWT (private_key_jwt approach)
 echo -e "${YELLOW}3. Custom client_id JWT (overrides iss/sub):${NC}"
-CUSTOM_TOKEN=$(curl -s -X POST "http://localhost:${TEST_PORT}/jwt" \
+CUSTOM_TOKEN=$(curl -s -X POST "http://localhost:${TEST_PORT}/private-key-jwt-token" \
   -H "Content-Type: application/json" \
   -d '{"client_id":"test-client","scope":"test"}' | jq -r .access_token)
 echo "Custom token payload:"

@@ -205,8 +205,8 @@ pub fn create_app() -> Router {
 pub fn create_app_with_state(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health_check))
-        .route("/token", post(token_endpoint))
-        .route("/jwt", post(jwt_endpoint))
+        .route("/client-id-document-token", post(token_endpoint))
+        .route("/private-key-jwt-token", post(jwt_endpoint))
         .route("/oauth-client", get(oauth_client_metadata))
         .route("/jwks", get(jwks_endpoint))
         .layer(TraceLayer::new_for_http())
@@ -324,7 +324,10 @@ mod tests {
         let app = create_app();
         let server = TestServer::new(app).unwrap();
 
-        let response = server.post("/token").json(&serde_json::json!({})).await;
+        let response = server
+            .post("/client-id-document-token")
+            .json(&serde_json::json!({}))
+            .await;
         response.assert_status_ok();
 
         let json: Value = response.json();
@@ -389,7 +392,7 @@ mod tests {
 
         // Test /jwt endpoint with custom client_id parameter
         let response = server
-            .post("/jwt")
+            .post("/private-key-jwt-token")
             .json(&serde_json::json!({
                 "client_id": "my-custom-client",
                 "scope": "custom-scope"
@@ -414,7 +417,7 @@ mod tests {
 
         // Test /jwt endpoint without custom client_id (should use default public URL)
         let response = server
-            .post("/jwt")
+            .post("/private-key-jwt-token")
             .json(&serde_json::json!({})) // Empty JSON object
             .await;
         response.assert_status_ok();
@@ -431,11 +434,14 @@ mod tests {
         let server = TestServer::new(app).unwrap();
 
         // Both endpoints should work but serve different purposes
-        let token_response = server.post("/token").json(&serde_json::json!({})).await;
+        let token_response = server
+            .post("/client-id-document-token")
+            .json(&serde_json::json!({}))
+            .await;
         token_response.assert_status_ok();
 
         let jwt_response = server
-            .post("/jwt")
+            .post("/private-key-jwt-token")
             .json(&serde_json::json!({})) // Empty JSON object
             .await;
         jwt_response.assert_status_ok();
@@ -461,7 +467,10 @@ mod tests {
         let app = create_app_with_state(state);
         let server = TestServer::new(app).unwrap();
 
-        let response = server.post("/jwt").json(&serde_json::json!({})).await;
+        let response = server
+            .post("/private-key-jwt-token")
+            .json(&serde_json::json!({}))
+            .await;
         response.assert_status_ok();
 
         let json: Value = response.json();
@@ -484,7 +493,10 @@ mod tests {
         let app = create_app_with_state(state);
         let server = TestServer::new(app).unwrap();
 
-        let response = server.post("/token").json(&serde_json::json!({})).await;
+        let response = server
+            .post("/client-id-document-token")
+            .json(&serde_json::json!({}))
+            .await;
         response.assert_status_ok();
 
         let json: Value = response.json();
@@ -526,7 +538,7 @@ mod tests {
         let server = TestServer::new(app).unwrap();
 
         let response = server
-            .post("/token")
+            .post("/client-id-document-token")
             .json(&serde_json::json!({
                 "aud": "extra.example.com"
             }))
@@ -551,7 +563,7 @@ mod tests {
         let server = TestServer::new(app).unwrap();
 
         let response = server
-            .post("/jwt")
+            .post("/private-key-jwt-token")
             .json(&serde_json::json!({
                 "client_id": "test-client",
                 "aud": ["extra1.example.com", "extra2.example.com"]
@@ -570,7 +582,7 @@ mod tests {
         let server = TestServer::new(app).unwrap();
 
         let response = server
-            .post("/token")
+            .post("/client-id-document-token")
             .json(&serde_json::json!({
                 "scope": "custom-scope",
                 "aud": "custom.audience.com"
@@ -590,11 +602,17 @@ mod tests {
         let server = TestServer::new(app).unwrap();
 
         // Test token endpoint with empty body
-        let response = server.post("/token").json(&serde_json::json!({})).await;
+        let response = server
+            .post("/client-id-document-token")
+            .json(&serde_json::json!({}))
+            .await;
         response.assert_status_ok();
 
         // Test JWT endpoint with empty body
-        let response = server.post("/jwt").json(&serde_json::json!({})).await;
+        let response = server
+            .post("/private-key-jwt-token")
+            .json(&serde_json::json!({}))
+            .await;
         response.assert_status_ok();
     }
 
@@ -605,7 +623,7 @@ mod tests {
         let server = TestServer::new(app).unwrap();
 
         // Test token endpoint with no body
-        let response = server.post("/token").await;
+        let response = server.post("/client-id-document-token").await;
         response.assert_status_ok();
 
         let json: Value = response.json();
@@ -614,7 +632,7 @@ mod tests {
         assert_eq!(json["scope"], "read write");
 
         // Test JWT endpoint with no body
-        let response = server.post("/jwt").await;
+        let response = server.post("/private-key-jwt-token").await;
         response.assert_status_ok();
 
         let json: Value = response.json();
@@ -631,7 +649,7 @@ mod tests {
 
         // Test token endpoint with plain text body - should fail
         let response = server
-            .post("/token")
+            .post("/client-id-document-token")
             .add_header("Content-Type", "text/plain")
             .text("some text")
             .await;
@@ -639,7 +657,7 @@ mod tests {
 
         // Test JWT endpoint with form data - should fail
         let response = server
-            .post("/jwt")
+            .post("/private-key-jwt-token")
             .add_header("Content-Type", "application/x-www-form-urlencoded")
             .text("key=value")
             .await;
