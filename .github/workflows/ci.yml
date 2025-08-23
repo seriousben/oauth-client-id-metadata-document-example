@@ -80,7 +80,7 @@ jobs:
     - name: Run release tests
       run: |
         chmod +x scripts/release-test.sh
-        ./scripts/release-test.sh oauth-test:latest 3002
+        ./scripts/release-test.sh http://localhost:3002
 
   security-audit:
     name: Security Audit
