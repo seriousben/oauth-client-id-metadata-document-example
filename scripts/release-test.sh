@@ -21,6 +21,21 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Helper function to decode JWT payload (handles base64url padding)
+decode_jwt_payload() {
+  local jwt_token="$1"
+  local payload=$(echo "$jwt_token" | cut -d'.' -f2)
+
+  # Add padding if needed for base64url
+  local padding=$((4 - ${#payload} % 4))
+  if [ $padding -lt 4 ]; then
+    payload="${payload}$(printf '=%.0s' $(seq 1 $padding))"
+  fi
+
+  # Decode and suppress error messages
+  echo "$payload" | base64 -d 2>/dev/null
+}
+
 echo -e "${BLUE}=== OAuth 2.0 Client Credentials Release Test ===${NC}"
 echo ""
 
@@ -73,11 +88,11 @@ echo ""
 echo -e "${YELLOW}2. Default token (uses PUBLIC_URL for iss/sub):${NC}"
 DEFAULT_TOKEN=$(curl -s -X POST "$SERVICE_URL/client-id-document-token" | jq -r .access_token)
 echo "Token payload:"
-echo $DEFAULT_TOKEN | cut -d'.' -f2 | base64 -d | jq .
+DEFAULT_PAYLOAD=$(decode_jwt_payload "$DEFAULT_TOKEN")
+echo "$DEFAULT_PAYLOAD" | jq .
 echo ""
 
 # Verify default token claims
-DEFAULT_PAYLOAD=$(echo $DEFAULT_TOKEN | cut -d'.' -f2 | base64 -d)
 ISS=$(echo "$DEFAULT_PAYLOAD" | jq -r .iss)
 SUB=$(echo "$DEFAULT_PAYLOAD" | jq -r .sub)
 if [ "$ISS" = "$SERVICE_URL" ] && [ "$SUB" = "$SERVICE_URL" ]; then
@@ -94,11 +109,11 @@ CUSTOM_TOKEN=$(curl -s -X POST "$SERVICE_URL/private-key-jwt-token" \
   -H "Content-Type: application/json" \
   -d '{"client_id":"test-client","scope":"test"}' | jq -r .access_token)
 echo "Custom token payload:"
-echo $CUSTOM_TOKEN | cut -d'.' -f2 | base64 -d | jq .
+CUSTOM_PAYLOAD=$(decode_jwt_payload "$CUSTOM_TOKEN")
+echo "$CUSTOM_PAYLOAD" | jq .
 echo ""
 
 # Verify custom token claims
-CUSTOM_PAYLOAD=$(echo $CUSTOM_TOKEN | cut -d'.' -f2 | base64 -d)
 CUSTOM_ISS=$(echo "$CUSTOM_PAYLOAD" | jq -r .iss)
 CUSTOM_SUB=$(echo "$CUSTOM_PAYLOAD" | jq -r .sub)
 if [ "$CUSTOM_ISS" = "test-client" ] && [ "$CUSTOM_SUB" = "test-client" ]; then
@@ -133,8 +148,8 @@ echo ""
 
 echo -e "${BLUE}=== JWT Algorithm Verification ===${NC}"
 # Verify JWT headers use RS256
-DEFAULT_HEADER=$(echo $DEFAULT_TOKEN | cut -d'.' -f1 | base64 -d)
-CUSTOM_HEADER=$(echo $CUSTOM_TOKEN | cut -d'.' -f1 | base64 -d)
+DEFAULT_HEADER=$(echo $DEFAULT_TOKEN | cut -d'.' -f1 | base64 -d 2>/dev/null)
+CUSTOM_HEADER=$(echo $CUSTOM_TOKEN | cut -d'.' -f1 | base64 -d 2>/dev/null)
 
 DEFAULT_ALG=$(echo "$DEFAULT_HEADER" | jq -r .alg)
 CUSTOM_ALG=$(echo "$CUSTOM_HEADER" | jq -r .alg)
@@ -154,7 +169,7 @@ echo -e "${BLUE}Summary:${NC}"
 echo "✅ Service is running and accessible"
 echo "✅ Health check endpoint working"
 echo "✅ Default token uses PUBLIC_URL for iss/sub"
-echo "✅ Custom client_id JWT overrides iss/sub claims"  
+echo "✅ Custom client_id JWT overrides iss/sub claims"
 echo "✅ JWKS endpoint provides RSA public keys"
 echo "✅ OAuth metadata endpoint working"
 echo "✅ All JWTs use RS256 algorithm"
