@@ -72,8 +72,8 @@ jobs:
         # Test health endpoint
         curl -f http://localhost:3003/health
         
-        # Test token endpoint
-        curl -f -X POST http://localhost:3003/token
+        # Test client ID metadata token endpoint
+        curl -f -X POST http://localhost:3003/client-id-document-token
         
         # Stop test container
         docker stop oauth-test

@@ -49,7 +49,10 @@ mod tests {
         assert_eq!(metadata["scope"], "read write");
 
         // 4. Test OAuth client metadata token endpoint (no parameters)
-        let response = server.post("/token").json(&serde_json::json!({})).await;
+        let response = server
+            .post("/client-id-document-token")
+            .json(&serde_json::json!({}))
+            .await;
         response.assert_status_ok();
         let token_response: Value = response.json();
         assert_eq!(token_response["token_type"], "Bearer");
@@ -64,7 +67,7 @@ mod tests {
 
         // 5. Test JWT endpoint for private_key_jwt use cases
         let response = server
-            .post("/jwt")
+            .post("/private-key-jwt-token")
             .json(&serde_json::json!({})) // Empty JSON object
             .await;
         response.assert_status_ok();
@@ -75,7 +78,7 @@ mod tests {
 
         // 6. Test JWT endpoint with custom client_id (JSON body)
         let response = server
-            .post("/jwt")
+            .post("/private-key-jwt-token")
             .json(&serde_json::json!({
                 "client_id": "custom-client",
                 "scope": "custom-read"
@@ -107,7 +110,10 @@ mod tests {
         assert_eq!(metadata["jwks_uri"], format!("{}/jwks", public_url));
 
         // Test that tokens use custom public URL as issuer/subject by default
-        let response = server.post("/token").json(&serde_json::json!({})).await;
+        let response = server
+            .post("/client-id-document-token")
+            .json(&serde_json::json!({}))
+            .await;
         response.assert_status_ok();
         let token_response: Value = response.json();
 
@@ -134,7 +140,10 @@ mod tests {
         let app = create_app();
         let server = TestServer::new(app).unwrap();
 
-        let response = server.post("/token").json(&serde_json::json!({})).await;
+        let response = server
+            .post("/client-id-document-token")
+            .json(&serde_json::json!({}))
+            .await;
         response.assert_status_ok();
         let token_response: Value = response.json();
 
@@ -189,7 +198,7 @@ mod tests {
 
         for i in 0..5 {
             let response = server
-                .post("/jwt")
+                .post("/private-key-jwt-token")
                 .json(&serde_json::json!({
                     "client_id": format!("client-{}", i)
                 }))
@@ -228,7 +237,10 @@ mod tests {
         let server = TestServer::new(app).unwrap();
 
         // Test token endpoint
-        let response = server.post("/token").json(&serde_json::json!({})).await;
+        let response = server
+            .post("/client-id-document-token")
+            .json(&serde_json::json!({}))
+            .await;
         response.assert_status_ok();
         let token_response: Value = response.json();
 
@@ -242,7 +254,7 @@ mod tests {
 
         // Test JWT endpoint
         let response = server
-            .post("/jwt")
+            .post("/private-key-jwt-token")
             .json(&serde_json::json!({
                 "client_id": "test-client"
             }))
@@ -276,7 +288,10 @@ mod tests {
         let app = create_app_with_state(state);
         let server = TestServer::new(app).unwrap();
 
-        let response = server.post("/token").json(&serde_json::json!({})).await;
+        let response = server
+            .post("/client-id-document-token")
+            .json(&serde_json::json!({}))
+            .await;
         response.assert_status_ok();
         let token_response: Value = response.json();
 
@@ -302,7 +317,10 @@ mod tests {
         let app = create_app_with_state(state);
         let server = TestServer::new(app).unwrap();
 
-        let response = server.post("/token").json(&serde_json::json!({})).await;
+        let response = server
+            .post("/client-id-document-token")
+            .json(&serde_json::json!({}))
+            .await;
         response.assert_status_ok();
         let token_response: Value = response.json();
 
@@ -333,7 +351,7 @@ mod tests {
 
         // Test token endpoint with additional audience in POST body
         let response = server
-            .post("/token")
+            .post("/client-id-document-token")
             .json(&serde_json::json!({
                 "aud": "request.example.com"
             }))
@@ -376,7 +394,7 @@ mod tests {
 
         // Test JWT endpoint with multiple additional audiences
         let response = server
-            .post("/jwt")
+            .post("/private-key-jwt-token")
             .json(&serde_json::json!({
                 "client_id": "test-client",
                 "aud": ["req1.example.com", "req2.example.com"]
@@ -417,7 +435,7 @@ mod tests {
         let server = TestServer::new(app).unwrap();
 
         let response = server
-            .post("/token")
+            .post("/client-id-document-token")
             .json(&serde_json::json!({
                 "aud": "only.request.com"
             }))

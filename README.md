@@ -1,404 +1,370 @@
-# OAuth Client ID Metadata Example
+# OAuth 2.0 Client Test Service for Authorization Server Validation
 
-A modern Rust HTTP service implementing OAuth 2.0 client credentials flow with client metadata according to Aaron Parecki's [OAuth Client ID Metadata Document draft specification](https://drafts.aaronpk.com/draft-parecki-oauth-client-id-metadata-document/).
+## Table of Contents
 
-## Overview
+1. [Abstract](#1-abstract)
+2. [Introduction](#2-introduction)
+3. [Definitions](#3-definitions)
+4. [OAuth Client ID Metadata Document](#4-oauth-client-id-metadata-document)
+5. [Client Authentication Methods](#5-client-authentication-methods)
+6. [Protocol Endpoints](#6-protocol-endpoints)
+7. [Security Considerations](#7-security-considerations)
+8. [Deployment and Configuration](#8-deployment-and-configuration)
+9. [Examples](#9-examples)
+10. [Contributing](#10-contributing)
+11. [References](#11-references)
 
-This service demonstrates and facilitates two different OAuth 2.0 authentication approaches:
+## 1. Abstract
 
-### 🔐 **OAuth Client ID Metadata Approach**
-- `POST /token` - Fixed JWT for OAuth client metadata flow (no parameters)
-- `GET /oauth-client` - Client metadata document with service identity
-- `GET /jwks` - JSON Web Key Set for token verification
+This document describes a test service for OAuth 2.0 client implementations supporting the [OAuth Client ID Metadata Document draft specification][oauth-client-id-metadata-document] as defined by Aaron Parecki. The implementation provides a complete OAuth 2.0 client credentials service that supports both pre-registered client authentication with private_key_jwt and the proposed Client ID Metadata Document approach for client discovery and verification.
 
-### 🎯 **Custom Private Key JWT Approach**
-- `POST /jwt` - Customizable JWT for private_key_jwt authentication
-- Accepts `client_id` parameter to override issuer/subject claims
-- Perfect for testing different client identities
+This service allows testing a pure private_key_jwt implementation and a Client ID Metadata Document implementation using private_key_jwt. This service is NOT an implementation of the Client ID Metadata Document specification since it only implements the client part of it. It can be used to test an authorization server's implementation of the Client ID Metadata Document specification.
 
-### 📊 **Common Endpoints**
-- `GET /health` - Health check endpoint
+The service implements the client credentials grant type as specified in RFC 6749, with extensions for client metadata publishing as described in the [OAuth Client ID Metadata Document draft][oauth-client-id-metadata-document]. This allows authorization servers to discover client capabilities and public keys through standardized metadata endpoints.
 
-## Features
-
-- **RS256 JWT Tokens**: Uses RSA-2048 keys for secure token signing
-- **Client Metadata**: Full OAuth client metadata document support
-- **JWKS Support**: JSON Web Key Set for public key distribution
-- **Environment Configuration**: Configurable public URL via environment variable
-- **Custom Client ID**: Support for custom client_id in token requests
-- **Modern Rust**: Built with Rust 1.89.0 using workspace architecture
-- **Docker Ready**: Multi-stage Docker builds with cargo-chef optimization
-
-## Quick Start
-
-### Using Docker Compose
+### Endpoints
 
 ```bash
-# Clone the repository
-git clone https://github.com/seriousben/oauth-client-id-metadata-example.git
-cd oauth-client-id-metadata-example
+# Service health verification endpoint
+curl https://oauth-client.example.com/health
 
-# Start the service
-docker compose up
+# OAuth 2.0 client metadata document (RFC 7591)
+curl https://oauth-client.example.com/oauth-client
 
-# The service will be available at http://localhost:3002
+# JSON Web Key Set for JWT verification (RFC 7517) 
+curl https://oauth-client.example.com/jwks
+
+# Client ID Metadata Document approach token endpoint
+curl -X POST https://oauth-client.example.com/client-id-document-token
+
+# Pre-registered client private_key_jwt authentication token endpoint
+curl -X POST https://oauth-client.example.com/private-key-jwt-token
 ```
 
-### Using Pre-built Docker Image
+## 2. Introduction
 
-```bash
-# Pull and run the latest published image
-docker run -p 3002:3000 \
-  -e PUBLIC_URL=http://localhost:3002 \
-  -e RUST_LOG=info \
-  ghcr.io/seriousben/oauth-client-id-metadata-example:latest
+### 2.1. Background
 
-# The service will be available at http://localhost:3002
-```
+OAuth 2.0, as defined in RFC 6749, specifies client registration through pre-registration with the authorization server. While dynamic client registration (RFC 7591) provides a standardized protocol for automated client registration, neither approach provides straightforward mechanisms for establishing trust with specific clients based on their published identity, particularly in scenarios where clients need to be trusted based on their ability to control specific URLs or domains.
 
-### Local Development
+The [OAuth Client ID Metadata Document draft specification][oauth-client-id-metadata-document] addresses the same fundamental problem as dynamic client registration - allowing clients to communicate their capabilities and authentication methods to authorization servers - but provides a different approach that enables trust establishment through client-published metadata at well-known locations. This approach is particularly valuable in scenarios like the Model Context Protocol (MCP) specification, where clients need to establish trust based on their published identity and capabilities.
 
-```bash
-# Install Rust 1.89.0+
-# Build and run
-cargo run -p oauth-server
+### 2.2. Protocol Overview
 
-# The service will be available at http://localhost:3000
-```
+This implementation supports two distinct OAuth 2.0 client authentication approaches:
 
-## Authentication Approaches Explained
+1. **Client ID Metadata Approach**: Clients publish metadata at a well-known location, allowing authorization servers to discover client capabilities and public keys dynamically using private_key_jwt as the asymmetric authentication method.
 
-### 🔐 **OAuth Client ID Metadata Flow**
+2. **Pre-registered Client with private_key_jwt**: Clients authenticate using signed JWT assertions as specified in RFC 7523, with pre-registered client credentials and customizable client identity claims. The private_key_jwt method is used as the asymmetric authentication method here.
 
-This approach implements Aaron Parecki's draft specification where the client publishes metadata about itself, including its public keys. The authorization server can then verify the client's identity by fetching this metadata.
+### 2.3. Scope
 
-**Flow:**
-1. Client registers with authorization server using its metadata URL
-2. Authorization server fetches client metadata from `GET /oauth-client`
-3. Authorization server gets client's public keys from `GET /jwks`
-4. Client uses `POST /token` to get access token (service identity)
+This implementation creates an OAuth client that can serve a Client ID Metadata Document and issue JWTs to test authorization server implementations of both private_key_jwt authentication and Client ID Metadata Document discovery.
 
-```bash
-# 1. Authorization server fetches client metadata
-curl http://localhost:3002/oauth-client
+## 3. Definitions
 
-# 2. Authorization server gets public keys for verification
-curl http://localhost:3002/jwks
+- **Client Metadata Document**: A JSON document containing OAuth 2.0 client metadata as specified in RFC 7591 and extended by the [OAuth Client ID Metadata Document draft][oauth-client-id-metadata-document].
+- **JWKS**: JSON Web Key Set as defined in RFC 7517, containing public keys for JWT verification.
+- **Client Credentials Grant**: The OAuth 2.0 grant type defined in Section 4.4 of RFC 6749.
+- **JWT Bearer Token**: A JSON Web Token used as an OAuth 2.0 access token, as specified in RFC 7519.
 
-# 3. Client gets access token (uses service's identity)
-curl -X POST http://localhost:3002/token
-```
+## 4. OAuth Client ID Metadata Document
 
-**Key characteristics:**
-- ✅ Client identity is tied to the service itself (`iss` and `sub` = service URL)
-- ✅ No client_id parameter needed - identity comes from metadata
-- ✅ Authorization server discovers client keys via JWKS endpoint
-- ✅ Perfect for service-to-service authentication
+### 4.1. Metadata Document Structure
 
-### 🎯 **Private Key JWT Authentication**
+The client metadata document is published at the `/oauth-client` endpoint and contains the following standardized metadata fields as defined in RFC 7591:
 
-This is the traditional OAuth 2.0 private_key_jwt method where the client signs a JWT with its private key and presents different identities.
-
-**Flow:**
-1. Client signs JWT with its private key
-2. JWT contains client_id as both issuer and subject
-3. Authorization server verifies JWT signature using client's public key
-4. Client presents different client_id values for different use cases
-
-```bash
-# Generate JWT for specific client identity
-curl -X POST http://localhost:3002/jwt \
-  -H "Content-Type: application/json" \
-  -d '{"client_id":"my-app-prod","scope":"api:read"}'
-
-# Generate JWT for different client identity
-curl -X POST http://localhost:3002/jwt \
-  -H "Content-Type: application/json" \
-  -d '{"client_id":"my-app-staging","scope":"api:write"}'
-
-# Use default service identity
-curl -X POST http://localhost:3002/jwt \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
-
-**Key characteristics:**
-- ✅ Client can present different identities via `client_id` parameter
-- ✅ `iss` and `sub` claims match the provided `client_id`
-- ✅ Perfect for testing multiple client scenarios
-- ✅ Traditional OAuth 2.0 private_key_jwt flow
-
-## API Reference
-
-### OAuth Client Metadata Endpoints
-
-#### Get Client Metadata
-```bash
-GET /oauth-client
-```
-
-Response:
 ```json
 {
   "client_id": "oauth-client-id-metadata-example",
   "client_name": "OAuth Client ID Metadata Example",
   "grant_types": ["client_credentials"],
-  "token_endpoint_auth_method": "private_key_jwt",
+  "token_endpoint_auth_method": "private_key_jwt", 
   "token_endpoint_auth_signing_alg": "RS256",
   "jwks_uri": "http://localhost:3002/jwks",
   "scope": "read write"
 }
 ```
 
-#### Get Service Access Token
-```bash
-POST /token
-```
+### 4.2. Metadata Discovery
 
-Response:
-```json
-{
-  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...",
-  "token_type": "Bearer",
-  "expires_in": 3600,
-  "scope": "read write"
-}
-```
+Authorization servers MAY discover client capabilities by fetching the metadata document from the client's published metadata URI. The metadata document MUST be served with the `application/json` media type.
 
-### Private Key JWT Endpoints
+### 4.3. Public Key Distribution
 
-#### Generate Custom JWT
-```bash
-POST /jwt
-Content-Type: application/json
+Public keys for JWT verification MUST be published via the JSON Web Key Set (JWKS) endpoint as referenced in the metadata document's `jwks_uri` field. The JWKS document MUST conform to RFC 7517 specifications.
 
-{
-  "client_id": "my-client",
-  "scope": "custom-scope"
-}
-```
+## 5. Client Authentication Methods
 
-Response:
-```json
-{
-  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...",
-  "token_type": "Bearer",
-  "expires_in": 3600,
-  "scope": "custom-scope"
-}
-```
+### 5.1. Client ID Metadata Approach
 
-**JSON Parameters:**
-- `client_id` (optional) - Override issuer and subject claims
-- `scope` (optional) - Custom scope for the token
+In this approach, the client identity is intrinsically tied to the service's public URL, following the [OAuth Client ID Metadata Document draft specification][oauth-client-id-metadata-document]. This model enables trust establishment based on the client's ability to control and serve content from their declared identity URL, providing a more straightforward trust mechanism compared to dynamic client registration flows.
 
-### Common Endpoints
+The client authentication process follows these steps:
 
-#### Get Public Keys (JWKS)
-```bash
-GET /jwks
-```
+1. **Trust Establishment**: Authorization server can trust clients based on their ability to serve metadata from their declared identity URL
+2. **Metadata Discovery**: Authorization server discovers client metadata from the published metadata document at the client's URL
+3. **Key Distribution**: Authorization server retrieves client public keys from the JWKS endpoint referenced in the metadata
+4. **Authentication**: Client requests access token using its service identity (iss = sub = service URL)
+5. **Verification**: Authorization server verifies client identity through metadata validation and JWT signature verification using private_key_jwt as the asymmetric authentication method
 
-Response:
-```json
-{
-  "keys": [
-    {
-      "kty": "RSA",
-      "alg": "RS256",
-      "kid": "key-12345678",
-      "n": "base64url-encoded-modulus...",
-      "e": "AQAB"
-    }
-  ]
-}
-```
+This approach is particularly beneficial for scenarios where clients need to be trusted based on their published identity (such as in MCP implementations) rather than through explicit registration processes.
 
-## Use Case Examples
+### 5.2. Pre-registered Client with private_key_jwt Authentication
 
-### Example 1: OAuth Client Metadata Flow
+This method implements RFC 7523 JWT Profile for OAuth 2.0 Client Authentication and Authorization Grants with pre-registration. The client authentication process includes:
 
-Perfect for microservices that need to authenticate with each other using a well-known identity.
+1. Client generates and signs JWT assertion with its private key
+2. JWT contains client_id as both issuer (iss) and subject (sub) claims
+3. Client presents JWT assertion to authorization server  
+4. Authorization server verifies JWT signature using client's public key, where private_key_jwt serves as the asymmetric authentication method
 
-```bash
-# Authorization server discovers client capabilities
-curl http://localhost:3002/oauth-client | jq .
 
-# Authorization server gets client's public keys
-curl http://localhost:3002/jwks | jq '.keys[0] | {kty, alg, kid}'
+## 6. Protocol Endpoints
 
-# Client authenticates using its service identity
-TOKEN_RESPONSE=$(curl -s -X POST http://localhost:3002/token)
-ACCESS_TOKEN=$(echo $TOKEN_RESPONSE | jq -r .access_token)
+### 6.1. Client Metadata Endpoint
 
-# Decode token to see service identity (iss=sub=service_url)
-echo $ACCESS_TOKEN | cut -d'.' -f2 | base64 -d | jq .
-```
+**Endpoint**: `GET /oauth-client`
 
-### Example 2: Private Key JWT Testing
+**Description**: Returns the OAuth 2.0 client metadata document as specified in RFC 7591.
 
-Perfect for testing OAuth 2.0 implementations with different client identities.
+**Response**: JSON document containing client metadata with `application/json` content type.
 
-```bash
-# Test production client identity
-PROD_TOKEN=$(curl -s -X POST http://localhost:3002/jwt \
-  -H "Content-Type: application/json" \
-  -d '{"client_id":"myapp-prod","scope":"api:read"}' | jq -r .access_token)
-echo $PROD_TOKEN | cut -d'.' -f2 | base64 -d | jq '{iss, sub, scope}'
+### 6.2. Client ID Metadata Document Token Endpoint
 
-# Test staging client identity
-STAGING_TOKEN=$(curl -s -X POST http://localhost:3002/jwt \
-  -H "Content-Type: application/json" \
-  -d '{"client_id":"myapp-staging","scope":"api:write"}' | jq -r .access_token)
-echo $STAGING_TOKEN | cut -d'.' -f2 | base64 -d | jq '{iss, sub, scope}'
+**Endpoint**: `POST /client-id-document-token`
 
-# Compare different client identities
-echo "Production client iss/sub: myapp-prod"
-echo "Staging client iss/sub: myapp-staging"
-```
+**Description**: Issues JWT access token using Client ID Metadata Document approach where client identity is derived from service metadata.
 
-### Example 3: Testing Authorization Server
+**Request Body**: Optional JSON object containing:
+- `scope` (optional): Requested OAuth 2.0 scope
+- `aud` (optional): Additional audience claims
 
-Use this service to test how an authorization server handles both approaches.
+**Response**: OAuth 2.0 access token response as specified in RFC 6749 Section 5.1.
+
+### 6.3. Pre-registered Client Token Endpoint (private_key_jwt)
+
+**Endpoint**: `POST /private-key-jwt-token`
+
+**Description**: Generates customizable JWT for pre-registered client private_key_jwt authentication method as specified in RFC 7523.
+
+**Request Body**: Optional JSON object containing:
+- `client_id` (optional): Override for issuer and subject claims
+- `scope` (optional): Requested OAuth 2.0 scope
+- `aud` (optional): Additional audience claims
+
+**Response**: OAuth 2.0 access token response as specified in RFC 6749 Section 5.1.
+
+### 6.4. JSON Web Key Set Endpoint
+
+**Endpoint**: `GET /jwks`
+
+**Description**: Returns the JSON Web Key Set containing public keys for JWT verification as specified in RFC 7517.
+
+**Response**: JWKS document with `application/json` content type.
+
+### 6.5. Health Check Endpoint
+
+**Endpoint**: `GET /health`
+
+**Description**: Service health verification endpoint.
+
+**Response**: JSON object indicating service status.
+
+## 7. Security Considerations
+
+**This service is intended for testing and development purposes only and is NOT suitable for production use.** The service generates ephemeral keys at startup, does not implement proper key rotation, and lacks the security hardening required for production OAuth 2.0 deployments.
+
+## 8. Deployment and Configuration
+
+### 8.1. Environment Variables
+
+The service supports the following configuration parameters:
+
+- `PUBLIC_URL`: The publicly accessible URL of the service (REQUIRED for production)
+- `RUST_LOG`: Logging verbosity level (default: "info")
+- `JWT_AUDIENCE`: Base audience claim(s) for issued tokens (OPTIONAL)
+  - Single audience: `JWT_AUDIENCE=api.example.com`
+  - Multiple audiences: `JWT_AUDIENCE=api1.example.com,api2.example.com`
+
+### 8.2. Container Deployment
 
 ```bash
-# Test OAuth client metadata discovery
-AUTH_SERVER="https://your-auth-server.com"
-CLIENT_METADATA_URL="http://localhost:3002"
-
-# 1. Register client with metadata URL
-curl -X POST "$AUTH_SERVER/clients" \
-  -H "Content-Type: application/json" \
-  -d "{\"client_metadata_uri\": \"$CLIENT_METADATA_URL/oauth-client\"}"
-
-# 2. Test private_key_jwt authentication
-JWT_TOKEN=$(curl -s -X POST http://localhost:3002/jwt \
-  -H "Content-Type: application/json" \
-  -d '{"client_id":"test-client"}')
-curl -X POST "$AUTH_SERVER/token" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&client_assertion=$JWT_TOKEN"
+docker run -p 3002:3000 \
+  -e PUBLIC_URL=https://oauth-client.example.com \
+  -e JWT_AUDIENCE=api.example.com \
+  -e RUST_LOG=info \
+  ghcr.io/seriousben/oauth-client-id-metadata-example:latest
 ```
 
-## Configuration
-
-### Environment Variables
-
-- `PUBLIC_URL` - The public URL of the service (default: `http://localhost:3000`)
-- `RUST_LOG` - Log level (default: `info`)
-
-### Docker Compose Configuration
+### 8.3. Docker Compose Configuration
 
 ```yaml
 services:
   oauth-server:
-    build: .
+    image: ghcr.io/seriousben/oauth-client-id-metadata-example:latest
     ports:
       - "3002:3000"
     environment:
-      - RUST_LOG=debug
-      - PUBLIC_URL=http://localhost:3002
+      PUBLIC_URL: "https://oauth-client.example.com"
+      JWT_AUDIENCE: "api.example.com,auth.example.com"
+      RUST_LOG: "info"
 ```
 
-## Token Details
+## 9. Examples
 
-The service issues RS256-signed JWT tokens with the following claims:
+### 9.1. Testing Authorization Server Client Discovery
 
-- `iss` (issuer) - Public URL or custom client_id
-- `sub` (subject) - Public URL or custom client_id
-- `aud` (audience) - Optional
-- `exp` (expiration) - Current time + 1 hour
-- `iat` (issued at) - Current timestamp
-- `jti` (JWT ID) - Unique identifier
-- `scope` - Requested scope as custom claim
+```bash
+# 1. Authorization server discovers client capabilities
+curl https://oauth-client.example.com/oauth-client
 
-### Default Behavior
+# 2. Authorization server retrieves client public keys for JWT verification
+curl https://oauth-client.example.com/jwks
 
-- **Without client_id**: Uses `PUBLIC_URL` for both `iss` and `sub` claims
-- **With client_id**: Uses the provided `client_id` for both `iss` and `sub` claims
-
-## Development
-
-### Project Structure
-
-```
-├── crates/
-│   ├── oauth-metadata/     # Core OAuth metadata and JWT logic
-│   ├── oauth-server/       # HTTP server and endpoints
-│   └── integration-tests/  # End-to-end integration tests
-├── Dockerfile              # Multi-stage Docker build
-├── compose.yaml            # Docker Compose configuration
-└── README.md
+# 3. Test your authorization server's client registration with metadata URI
+curl -X POST https://your-auth-server.com/clients \
+  -H "Content-Type: application/json" \
+  -d '{"client_metadata_uri": "https://oauth-client.example.com/oauth-client"}'
 ```
 
-### Running Tests
+### 9.2. Testing Authorization Server Token Exchange
+
+```bash
+# 1. Generate client JWT using Client ID Metadata Document approach
+CLIENT_JWT=$(curl -s -X POST https://oauth-client.example.com/client-id-document-token | jq -r .access_token)
+
+# 2. Test your authorization server's token endpoint with the client JWT
+curl -X POST https://your-auth-server.com/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&client_assertion=$CLIENT_JWT"
+
+# 3. Alternative: Generate JWT with specific client identity for testing
+CUSTOM_JWT=$(curl -s -X POST https://oauth-client.example.com/private-key-jwt-token \
+  -H "Content-Type: application/json" \
+  -d '{"client_id": "test-client-123", "scope": "api:read"}' | jq -r .access_token)
+
+# 4. Test authorization server with custom client JWT
+curl -X POST https://your-auth-server.com/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&client_assertion=$CUSTOM_JWT"
+```
+
+### 9.3. Testing Authorization Server JWT Validation
+
+```bash
+# 1. Generate JWT with various client identities to test authorization server validation
+PROD_JWT=$(curl -s -X POST https://oauth-client.example.com/private-key-jwt-token \
+  -H "Content-Type: application/json" \
+  -d '{"client_id": "my-service-prod", "scope": "api:read api:write"}' | jq -r .access_token)
+
+STAGING_JWT=$(curl -s -X POST https://oauth-client.example.com/private-key-jwt-token \
+  -H "Content-Type: application/json" \
+  -d '{"client_id": "my-service-staging", "scope": "api:read"}' | jq -r .access_token)
+
+# 2. Test authorization server's JWT validation with different client identities
+echo "Testing production client:"
+curl -X POST https://your-auth-server.com/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&client_assertion=$PROD_JWT"
+
+echo "Testing staging client:"
+curl -X POST https://your-auth-server.com/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&client_assertion=$STAGING_JWT"
+```
+
+### 9.4. Audience Configuration
+
+```bash
+# Token with base audiences (from JWT_AUDIENCE environment variable)
+curl -X POST https://oauth-client.example.com/client-id-document-token
+
+# Token with additional audience appended to base audiences
+curl -X POST https://oauth-client.example.com/private-key-jwt-token \
+  -H "Content-Type: application/json" \
+  -d '{"aud": "https://extra-service.example.com"}'
+```
+
+### 9.5. JWT Token Verification
+
+```bash
+# Retrieve and decode access token
+TOKEN=$(curl -s -X POST https://oauth-client.example.com/client-id-document-token | jq -r .access_token)
+
+# Decode JWT header
+echo $TOKEN | cut -d'.' -f1 | base64 -d | jq .
+
+# Decode JWT payload  
+echo $TOKEN | cut -d'.' -f2 | base64 -d | jq .
+```
+
+## 10. Contributing
+
+### 10.1. Architecture
+
+The implementation is structured as a Rust workspace containing three primary crates:
+
+- `oauth-metadata`: Core OAuth metadata and JWT logic
+- `oauth-server`: HTTP server and protocol endpoints
+- `integration-tests`: End-to-end protocol validation tests
+
+### 10.2. Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/seriousben/oauth-client-id-metadata-example.git
+cd oauth-client-id-metadata-example
+
+# Install Rust 1.89.0+
+# Build the project
+cargo build
+
+# Run tests
+cargo test
+
+# Run the server locally
+cargo run -p oauth-server
+```
+
+### 10.3. Cryptographic Implementation
+
+- **Key Generation**: RSA-2048 key pairs generated at service startup
+- **Signature Algorithm**: RS256 (RSA PKCS#1 v1.5 with SHA-256)
+- **Key Distribution**: Public keys exposed via RFC 7517 compliant JWKS endpoint
+- **Token Lifetime**: JWT access tokens expire after 3600 seconds (1 hour)
+
+### 10.4. Testing
 
 ```bash
 # Unit tests
-cargo test
+cargo test --workspace
 
 # Integration tests
 cargo test -p integration-tests
 
-# Specific test
-cargo test -p oauth-server test_token_endpoint
+# Docker integration tests
+./scripts/release-test.sh
 
-# Release/End-to-end tests
-./scripts/release-test.sh                                    # Build and test locally
-./scripts/release-test.sh ghcr.io/seriousben/oauth-client-id-metadata-example:latest  # Test published image
+# Linting and formatting
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo fmt --all -- --check
 ```
 
-### Building
+## 11. References
 
-```bash
-# Development build
-cargo build
+- **RFC 6749**: The OAuth 2.0 Authorization Framework
+- **RFC 7519**: JSON Web Token (JWT)
+- **RFC 7517**: JSON Web Key (JWK)
+- **RFC 7523**: JSON Web Token (JWT) Profile for OAuth 2.0 Client Authentication and Authorization Grants
+- **RFC 7591**: OAuth 2.0 Dynamic Client Registration Protocol
+- **OAuth Client ID Metadata Document**: [Draft Specification by Aaron Parecki][oauth-client-id-metadata-document]
 
-# Release build
-cargo build --release
+---
 
-# Docker build
-docker build -t oauth-client-id-metadata-example .
-```
+**Implementation Version**: 0.1.0  
+**License**: Apache-2.0  
+**Repository**: https://github.com/seriousben/oauth-client-id-metadata-document-example
 
-## Specification Compliance
-
-This implementation follows the [OAuth Client ID Metadata Document draft specification](https://drafts.aaronpk.com/draft-parecki-oauth-client-id-metadata-document/) and includes:
-
-- **Client Metadata Document**: Complete OAuth 2.0 client metadata structure
-- **JWKS Integration**: Public key distribution via JSON Web Key Set
-- **Client Credentials Flow**: Standard OAuth 2.0 client credentials grant type
-- **JWT Bearer Tokens**: RS256-signed tokens with proper claims structure
-
-## Security Considerations
-
-- **RSA-2048 Keys**: Strong cryptographic keys generated at runtime
-- **RS256 Signing**: Industry-standard JWT signing algorithm
-- **Token Expiration**: 1-hour token lifetime for security
-- **No Secrets in Logs**: Careful handling of sensitive information
-- **HTTPS Ready**: Designed for production HTTPS deployment
-
-## CI/CD
-
-### GitHub Actions
-
-This project includes comprehensive CI/CD workflows:
-
-- **CI**: Runs tests, linting, and security audits on all PRs and pushes
-- **Docker Publish**: Builds and publishes Docker images to GitHub Container Registry
-- **Multi-platform**: Supports both `linux/amd64` and `linux/arm64` architectures
-- **Security**: Includes `cargo audit` for vulnerability scanning
-- **Integration Tests**: Full end-to-end testing of Docker containers
-
-## Contributing
-
-1. Ensure Rust 1.89.0+ is installed
-2. Run tests: `cargo test`
-3. Check formatting: `cargo fmt`
-4. Run lints: `cargo clippy`
-5. Test Docker build: `docker build .`
-6. All PRs are automatically tested via GitHub Actions
-
-## License
-
-Apache-2.0
+<!-- Link References -->
+[oauth-client-id-metadata-document]: https://github.com/aaronpk/draft-parecki-oauth-client-id-metadata-document
