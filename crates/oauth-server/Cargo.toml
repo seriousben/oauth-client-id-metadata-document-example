@@ -26,6 +26,13 @@ tower-http.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+# Templating
+askama.workspace = true
+
+# JWT decoding
+jsonwebtoken.workspace = true
+base64.workspace = true
+
 # Error handling
 anyhow.workspace = true
 thiserror.workspace = true
@@ -33,6 +40,9 @@ thiserror.workspace = true
 # Tracing
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+# Time
+chrono.workspace = true
 
 [dev-dependencies]
 axum-test.workspace = true

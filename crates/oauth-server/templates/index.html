@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth 2.0 Client Credentials Service</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            width: 100%;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+            color: white;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+        
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        .card h2 {
+            color: #4c51bf;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .card p {
+            color: #666;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.2s ease;
+            background: #f9fafb;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #4c51bf;
+            background: white;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            text-decoration: none;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+        
+        .btn-secondary:hover {
+            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+        }
+        
+        .result-section {
+            grid-column: 1 / -1;
+            margin-top: 2rem;
+        }
+        
+        .result-card {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 2rem;
+        }
+        
+        .result-card h3 {
+            color: #2d3748;
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+        }
+        
+        .token-display {
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 1.5rem;
+            border-radius: 8px;
+            font-family: "Monaco", "Menlo", monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            overflow-x: auto;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+        
+        .copy-btn {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: #4a5568;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: background 0.2s ease;
+        }
+        
+        .copy-btn:hover {
+            background: #2d3748;
+        }
+        
+        .token-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .detail-item {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 4px solid #4c51bf;
+        }
+        
+        .detail-item strong {
+            display: block;
+            color: #4c51bf;
+            margin-bottom: 0.25rem;
+        }
+        
+        .json-display {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 1.5rem;
+            font-family: "Monaco", "Menlo", monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            word-break: break-all;
+            overflow-wrap: anywhere;
+        }
+        
+        .info-section {
+            grid-column: 1 / -1;
+            text-align: center;
+            margin-top: 2rem;
+        }
+        
+        .info-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1rem;
+        }
+        
+        .info-links a {
+            color: white;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            transition: background 0.2s ease;
+        }
+        
+        .info-links a:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .token-details {
+                grid-template-columns: 1fr;
+            }
+            
+            .info-links {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+        
+        .notification {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: #10b981;
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+            z-index: 1000;
+            display: none;
+        }
+        
+        .notification.show {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Tab Navigation Styles */
+        .tab-navigation {
+            display: flex;
+            border-bottom: 2px solid #e5e7eb;
+            margin: 1.5rem 0 0 0;
+            gap: 0;
+        }
+        
+        .tab-button {
+            background: none;
+            border: none;
+            padding: 1rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            color: #6b7280;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        
+        .tab-button:hover {
+            color: #4c51bf;
+            background: #f8fafc;
+        }
+        
+        .tab-button.active {
+            color: #4c51bf;
+            border-bottom-color: #4c51bf;
+            background: #f8fafc;
+        }
+        
+        .health-link {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            color: #10b981;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+        
+        .health-link:hover {
+            color: #059669;
+        }
+        
+        /* Tab Content Styles */
+        .tab-content {
+            margin-top: 0;
+        }
+        
+        .tab-panel {
+            display: none;
+            padding: 2rem 0;
+        }
+        
+        .tab-panel.active {
+            display: block;
+        }
+        
+        .tab-description {
+            margin-bottom: 1.5rem;
+        }
+        
+        .tab-description h3 {
+            color: #2d3748;
+            margin-bottom: 0.5rem;
+            font-size: 1.25rem;
+        }
+        
+        .tab-description p {
+            color: #666;
+            line-height: 1.6;
+        }
+        
+        .tab-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .endpoint-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        
+        .endpoint-info code {
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-family: "Monaco", "Menlo", monospace;
+            font-size: 0.9rem;
+        }
+        
+        .endpoint-description {
+            font-size: 0.8rem;
+            color: #666;
+            margin-left: 1rem;
+        }
+        
+        /* Main Navigation */
+        .main-navigation {
+            display: flex;
+            justify-content: center;
+            margin: 2rem 0 0 0;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .nav-tab {
+            background: none;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            color: rgba(255, 255, 255, 0.7);
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .nav-tab:hover {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .nav-tab.active {
+            color: white;
+            border-bottom-color: white;
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        /* Main Content Areas */
+        .main-content {
+            margin: 0;
+            padding: 0;
+            min-height: calc(100vh - 200px);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+        }
+        
+        /* Tokens Layout - 50/50 Split with Separator */
+        .tokens-layout {
+            display: grid;
+            grid-template-columns: 1fr 2px 1fr;
+            min-height: calc(100vh - 200px);
+            gap: 0;
+        }
+        
+        .forms-column {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            padding: 2rem;
+            background: #f8fafc;
+        }
+        
+        .column-separator {
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+            width: 2px;
+            min-height: 100%;
+        }
+        
+        .results-column {
+            display: flex;
+            flex-direction: column;
+            padding: 2rem;
+            background: white;
+        }
+        
+        /* Compact Forms */
+        .card.compact {
+            padding: 1rem;
+            margin-bottom: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .card.compact h3 {
+            font-size: 1.2rem;
+            margin-bottom: 0.75rem;
+            color: #4c51bf;
+        }
+        
+        .card.compact p {
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+            line-height: 1.3;
+        }
+        
+        .card.compact .form-group {
+            margin-bottom: 0.8rem;
+        }
+        
+        .card.compact .form-group label {
+            font-size: 0.9rem;
+            margin-bottom: 0.4rem;
+        }
+        
+        .card.compact .form-group input {
+            padding: 0.5rem 0.7rem;
+            font-size: 0.85rem;
+        }
+        
+        .card.compact .btn {
+            width: 100%;
+            padding: 0.6rem;
+            font-size: 0.9rem;
+            margin-top: auto;
+        }
+        
+        /* Results Display */
+        .result-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .result-card h3 {
+            color: #2d3748;
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+        }
+        
+        .placeholder-message {
+            text-align: center;
+            color: #6b7280;
+            padding: 2rem;
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 2px dashed #d1d5db;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 300px;
+        }
+        
+        .placeholder-message h3 {
+            color: #4b5563;
+            margin-bottom: 0.5rem;
+        }
+        
+        /* Full Page JSON Results */
+        .json-result-container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: calc(100vh - 200px);
+            padding: 2rem;
+        }
+        
+        .json-result-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .json-result-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        
+        .json-result-header h3 {
+            margin: 0;
+            font-size: 1.3rem;
+        }
+        
+        .json-result-footer {
+            background: #f8fafc;
+            padding: 1rem 2rem;
+            border-top: 1px solid #e2e8f0;
+            flex-shrink: 0;
+        }
+        
+        .json-result-footer p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: #4a5568;
+        }
+        
+        .json-result-footer code {
+            background: #e2e8f0;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #2d3748;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .main-content {
+                min-height: calc(100vh - 200px);
+            }
+            
+            .tokens-layout {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+                min-height: auto;
+            }
+            
+            .column-separator {
+                display: none;
+            }
+            
+            .forms-column {
+                order: 1;
+            }
+            
+            .results-column {
+                order: 2;
+            }
+            
+            .nav-tab {
+                padding: 0.8rem 1.5rem;
+                font-size: 1rem;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .main-navigation {
+                margin: 1rem 0;
+            }
+            
+            .nav-tab {
+                padding: 0.7rem 1rem;
+                font-size: 0.9rem;
+            }
+            
+            .main-content {
+                min-height: calc(100vh - 180px);
+            }
+            
+            .tokens-layout {
+                gap: 1rem;
+            }
+            
+            .card.compact {
+                padding: 1.25rem;
+            }
+            
+            .json-result-container {
+                padding: 1rem;
+                align-items: flex-start;
+            }
+            
+            .json-result-card {
+                width: 100%;
+                max-width: none;
+            }
+            
+            .json-result-header {
+                padding: 1.25rem 1.5rem;
+            }
+            
+            .json-result-footer {
+                padding: 0.75rem 1.5rem;
+            }
+        }
+        
+        /* JWT.io Style Token Display */
+        .jwt-container {
+            margin-top: 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .jwt-raw-section {
+            margin-bottom: 1rem;
+            flex-shrink: 0;
+        }
+        
+        .raw-token-section .jwt-section-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .jwt-raw-token {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            color: #4a5568;
+            padding: 1rem;
+            font-family: "Monaco", "Menlo", monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            word-break: break-all;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
+        }
+        
+        .jwt-decoded-sections {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .jwt-section {
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .jwt-section-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            padding: 1rem;
+            font-weight: 600;
+            color: white;
+            font-size: 0.9rem;
+        }
+        
+        .jwt-section-header h4 {
+            margin: 0;
+            flex-grow: 1;
+        }
+        
+        .copy-btn-small {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        
+        .copy-btn-small:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .header-section .jwt-section-header {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
+        }
+        
+        .payload-section .jwt-section-header {
+            background: linear-gradient(135deg, #4ecdc4, #44a08d);
+        }
+        
+        .signature-section .jwt-section-header {
+            background: linear-gradient(135deg, #45b7d1, #96c93d);
+        }
+        
+        .algorithm {
+            font-weight: 400;
+            opacity: 0.9;
+        }
+        
+        .data {
+            font-weight: 400;
+            opacity: 0.9;
+        }
+        
+        .jwt-content {
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 1rem;
+            font-family: "Monaco", "Menlo", monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
+        }
+        
+        .jwt-signature {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            color: #4a5568;
+            padding: 1rem;
+            font-family: "Monaco", "Menlo", monospace;
+            font-size: 0.85rem;
+            word-break: break-all;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
+        }
+        
+        .signature-note {
+            background: #edf2f7;
+            padding: 1rem;
+            margin-top: 0;
+            border-bottom-left-radius: 8px;
+            border-bottom-right-radius: 8px;
+            flex-shrink: 0;
+        }
+        
+        .signature-note p {
+            margin: 0;
+            color: #4a5568;
+            font-size: 0.9rem;
+        }
+        
+        .token-metadata {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 2px solid #e2e8f0;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+        
+        .metadata-item {
+            color: #4a5568;
+            font-size: 0.9rem;
+        }
+        
+        .metadata-item strong {
+            color: #2d3748;
+        }
+        
+        @media (max-width: 768px) {
+            .jwt-decoded-sections {
+                gap: 1rem;
+            }
+            
+            .jwt-section-header {
+                padding: 0.75rem;
+                font-size: 0.8rem;
+            }
+            
+            .jwt-content, .jwt-signature {
+                padding: 1rem;
+                font-size: 0.8rem;
+            }
+            
+            .token-metadata {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="notification" id="notification">Copied to clipboard!</div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>OAuth 2.0 Service</h1>
+            <p>Generate JWT tokens and explore OAuth metadata</p>
+        </div>
+        
+        <!-- Main Navigation -->
+        <div class="main-navigation">
+            <button class="nav-tab {% if active_tab == "tokens" %}active{% endif %}" onclick="switchMainTab(event, 'tokens-content', '/tokens')">
+                Tokens
+            </button>
+            <button class="nav-tab {% if active_tab == "metadata" %}active{% endif %}" onclick="switchMainTab(event, 'metadata-content', '/metadata')">
+                Client Metadata
+            </button>
+            <button class="nav-tab {% if active_tab == "jwks" %}active{% endif %}" onclick="switchMainTab(event, 'jwks-content', '/jwks')">
+                JWKS
+            </button>
+        </div>
+        
+        <div class="main-content">
+            <!-- Tokens Tab Content -->
+            <div id="tokens-content" class="tab-content {% if active_tab == "tokens" %}active{% endif %}">
+                <div class="tokens-layout">
+                    <div class="forms-column">
+                        <!-- Private Key JWT Card -->
+                        <div class="card compact">
+                            <h3>Private Key JWT</h3>
+                            <p>Generate a JWT token with custom client ID for private_key_jwt authentication.</p>
+                            <form action="/generate-jwt" method="post">
+                                <div class="form-group">
+                                    <label for="client_id">Client ID (optional)</label>
+                                    <input type="text" id="client_id" name="client_id" placeholder="my-custom-client">
+                                </div>
+                                <div class="form-group">
+                                    <label for="scope">Scope (optional)</label>
+                                    <input type="text" id="scope" name="scope" placeholder="read write">
+                                </div>
+                                <button type="submit" class="btn">Generate JWT</button>
+                            </form>
+                        </div>
+                        
+                        <!-- Client Metadata Token Card -->
+                        <div class="card compact">
+                            <h3>Client Metadata Token</h3>
+                            <p>Generate a JWT token using the OAuth Client Metadata Document approach.</p>
+                            <form action="/generate-metadata-token" method="post">
+                                <div class="form-group">
+                                    <label for="metadata_scope">Scope (optional)</label>
+                                    <input type="text" id="metadata_scope" name="scope" placeholder="read write">
+                                </div>
+                                <button type="submit" class="btn btn-secondary">Generate Token</button>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <div class="column-separator"></div>
+                    
+                    <div class="results-column">
+                        {% if has_token_result %}
+                        <!-- Token Result Display -->
+                        <div class="result-card">
+                            <h3>Generated JWT Token</h3>
+                            
+                            <!-- JWT.io Style Layout -->
+                            <div class="jwt-container">
+                                <div class="jwt-section raw-token-section">
+                                    <div class="jwt-section-header">
+                                        <h4>RAW TOKEN</h4>
+                                        <button class="copy-btn-small" onclick="copyToClipboard('raw-token-content')">Copy</button>
+                                    </div>
+                                    <div class="jwt-raw-token" id="raw-token-content">{{ token_result.access_token }}</div>
+                                </div>
+                                
+                                <div class="jwt-decoded-sections">
+                                    <!-- Header Section -->
+                                    <div class="jwt-section header-section">
+                                        <div class="jwt-section-header">
+                                            <h4>HEADER: <span class="algorithm">ALGORITHM & TOKEN TYPE</span></h4>
+                                            <button class="copy-btn-small" onclick="copyToClipboard('jwt-header-content')">Copy</button>
+                                        </div>
+                                        <div class="jwt-content" id="jwt-header-content">{{ token_result.jwt_header }}</div>
+                                    </div>
+                                    
+                                    <!-- Payload Section -->
+                                    <div class="jwt-section payload-section">
+                                        <div class="jwt-section-header">
+                                            <h4>PAYLOAD: <span class="data">DATA</span></h4>
+                                            <button class="copy-btn-small" onclick="copyToClipboard('jwt-payload-content')">Copy</button>
+                                        </div>
+                                        <div class="jwt-content" id="jwt-payload-content">{{ token_result.jwt_payload }}</div>
+                                    </div>
+                                    
+                                    <!-- Signature Section -->
+                                    <div class="jwt-section signature-section">
+                                        <div class="jwt-section-header">
+                                            <h4>VERIFY SIGNATURE</h4>
+                                            <button class="copy-btn-small" onclick="copyToClipboard('jwt-signature-content')">Copy</button>
+                                        </div>
+                                        <div class="jwt-signature" id="jwt-signature-content">{{ token_result.jwt_signature }}</div>
+                                        <div class="signature-note">
+                                            <p>To verify the signature, use the public key from the <strong>JWKS</strong> endpoint.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Token Metadata -->
+                            <div class="token-metadata">
+                                <div class="metadata-item">
+                                    <strong>Token Type:</strong> {{ token_result.token_type }}
+                                </div>
+                                <div class="metadata-item">
+                                    <strong>Expires In:</strong> {{ token_result.expires_in }} seconds
+                                </div>
+                                <div class="metadata-item">
+                                    <strong>Expires At:</strong> {{ token_result.expires_at }}
+                                </div>
+                                {% if token_result.scope.is_some() %}
+                                <div class="metadata-item">
+                                    <strong>Scope:</strong> {{ token_result.scope.as_ref().unwrap() }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="placeholder-message">
+                            <h3>Generate a Token</h3>
+                            <p>Use one of the forms on the left to generate a JWT token. The decoded token details will appear here.</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Client Metadata Tab Content -->
+            <div id="metadata-content" class="tab-content {% if active_tab == "metadata" %}active{% endif %}">
+                <div class="json-result-container">
+                    <div class="json-result-card">
+                        <div class="json-result-header">
+                            <h3>OAuth Client Metadata Document</h3>
+                            <button class="copy-btn-small" onclick="copyToClipboard('metadata-json-content')">Copy</button>
+                        </div>
+                        <div class="json-display" id="metadata-json-content">{{ metadata_result }}</div>
+                        <div class="json-result-footer">
+                            <p><strong>Direct API Access:</strong> <code>GET /oauth-client</code></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- JWKS Tab Content -->
+            <div id="jwks-content" class="tab-content {% if active_tab == "jwks" %}active{% endif %}">
+                <div class="json-result-container">
+                    <div class="json-result-card">
+                        <div class="json-result-header">
+                            <h3>JSON Web Key Set (JWKS)</h3>
+                            <button class="copy-btn-small" onclick="copyToClipboard('jwks-json-content')">Copy</button>
+                        </div>
+                        <div class="json-display" id="jwks-json-content">{{ jwks_result }}</div>
+                        <div class="json-result-footer">
+                            <p><strong>Direct API Access:</strong> <code>GET /jwks</code></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element ? element.textContent : document.querySelector('.json-display').textContent;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                showNotification('Copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showNotification('Copied to clipboard!');
+            });
+        }
+        
+        function showNotification(message) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.classList.add('show');
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+        
+        function switchMainTab(event, contentId, url) {
+            // Remove active class from all nav tabs
+            const navTabs = document.querySelectorAll('.nav-tab');
+            navTabs.forEach(tab => tab.classList.remove('active'));
+            
+            // Remove active class from all tab content
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(content => content.classList.remove('active'));
+            
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+            
+            // Show the target content
+            const targetContent = document.getElementById(contentId);
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+            
+            // Optional: Update URL without page reload for better UX
+            if (url && history.pushState) {
+                history.pushState(null, null, url);
+            }
+        }
+        
+        // Legacy function for backward compatibility (remove old tab switching)
+        function switchTab(event, tabId) {
+            // This function is no longer used but keeping it to avoid errors
+        }
+        
+        // Add hidden content containers for copy functionality
+        document.addEventListener('DOMContentLoaded', () => {
+            const jwksDisplay = document.querySelector('.result-card h3:contains("JWKS") + .json-display');
+            if (jwksDisplay) {
+                jwksDisplay.id = 'jwks-content';
+            }
+            
+            const metadataDisplay = document.querySelector('.result-card h3:contains("Metadata") + .json-display');
+            if (metadataDisplay) {
+                metadataDisplay.id = 'metadata-content';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -57,7 +57,7 @@ mod tests {
         let token_response: Value = response.json();
         assert_eq!(token_response["token_type"], "Bearer");
         assert_eq!(token_response["expires_in"], 3600);
-        assert_eq!(token_response["scope"], "read write");
+        assert!(token_response["scope"].is_null());
         assert!(token_response["access_token"].is_string());
 
         let access_token = token_response["access_token"].as_str().unwrap();
@@ -74,7 +74,7 @@ mod tests {
         let jwt_default: Value = response.json();
         assert_eq!(jwt_default["token_type"], "Bearer");
         assert_eq!(jwt_default["expires_in"], 3600);
-        assert_eq!(jwt_default["scope"], "read write");
+        assert!(jwt_default["scope"].is_null());
 
         // 6. Test JWT endpoint with custom client_id (JSON body)
         let response = server

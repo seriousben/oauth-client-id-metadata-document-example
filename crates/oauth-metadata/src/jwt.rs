@@ -240,12 +240,14 @@ impl JwtIssuer {
             claims.sub = Some(client_id_value.clone());
         }
 
-        // Add scope as custom claim if provided
+        // Add scope as custom claim if provided and not empty
         if let Some(ref scope_value) = scope {
-            claims.custom.insert(
-                "scope".to_string(),
-                serde_json::Value::String(scope_value.clone()),
-            );
+            if !scope_value.is_empty() {
+                claims.custom.insert(
+                    "scope".to_string(),
+                    serde_json::Value::String(scope_value.clone()),
+                );
+            }
         }
 
         let access_token = self.issue_token(claims)?;
@@ -254,7 +256,7 @@ impl JwtIssuer {
             access_token,
             token_type: "Bearer".to_string(),
             expires_in: Some(3600), // 1 hour
-            scope,
+            scope: scope.filter(|s| !s.is_empty()),
         })
     }
 

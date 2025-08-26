@@ -1,12 +1,15 @@
+use askama::Template;
 use axum::{
     extract::{Request, State},
     http::{header::CONTENT_TYPE, StatusCode},
-    response::Json,
+    response::{Html, IntoResponse, Json},
     routing::{get, post},
-    Router,
+    Form, Router,
 };
+use base64::{engine::general_purpose, Engine as _};
+use chrono::{DateTime, Local, Utc};
 use oauth_metadata::{hello_oauth, JsonWebKeySet, JwtIssuer, KeyManager, OAuthClientMetadata};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tower_http::trace::TraceLayer;
@@ -86,6 +89,160 @@ pub struct TokenParams {
     /// Additional audience(s) to append to configured audience
     /// Can be a string or array of strings
     pub aud: Option<serde_json::Value>,
+}
+
+/// Form parameters for private key JWT generation
+#[derive(Debug, Deserialize)]
+pub struct JwtFormParams {
+    pub client_id: Option<String>,
+    pub scope: Option<String>,
+}
+
+/// Form parameters for metadata token generation
+#[derive(Debug, Deserialize)]
+pub struct TokenFormParams {
+    pub scope: Option<String>,
+}
+
+/// Template for the main index page
+#[derive(Template)]
+#[template(path = "index.html")]
+pub struct IndexTemplate {
+    pub active_tab: String,
+    pub has_token_result: bool,
+    pub token_result: TokenResponse,
+    pub jwks_result: String,
+    pub metadata_result: String,
+}
+
+impl IntoResponse for IndexTemplate {
+    fn into_response(self) -> axum::response::Response {
+        match self.render() {
+            Ok(html) => Html(html).into_response(),
+            Err(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Html("<h1>Failed to render template</h1>".to_string()),
+            )
+                .into_response(),
+        }
+    }
+}
+
+/// Token response structure for template
+#[derive(Debug, Default)]
+pub struct TokenResponse {
+    pub access_token: String,
+    pub token_type: String,
+    pub expires_in: u64,
+    pub expires_at: String,
+    pub scope: Option<String>,
+    // JWT.io style sections
+    pub jwt_header: String,
+    pub jwt_payload: String,
+    pub jwt_signature: String,
+}
+
+/// JWT Claims for decoding
+#[derive(Debug, Deserialize, Serialize)]
+pub struct JwtClaims {
+    pub iss: String,
+    pub sub: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aud: Option<serde_json::Value>,
+    pub exp: i64,
+    pub iat: i64,
+    pub jti: String,
+    pub scope: String,
+}
+
+/// Calculate expiration timestamp as human-readable string with Local + UTC
+fn calculate_expires_at(expires_in: u64) -> String {
+    let now = Utc::now();
+    let expires_at_utc = now + chrono::Duration::seconds(expires_in as i64);
+    let expires_at_local: DateTime<Local> = expires_at_utc.into();
+
+    format!(
+        "{} (Local) / {} (UTC)",
+        expires_at_local.format("%Y-%m-%d %H:%M:%S %Z"),
+        expires_at_utc.format("%Y-%m-%d %H:%M:%S UTC")
+    )
+}
+
+/// Decode JWT into its parts for display
+fn decode_jwt_parts(jwt: &str) -> (String, String, String) {
+    let parts: Vec<&str> = jwt.split('.').collect();
+    if parts.len() != 3 {
+        return (
+            "Invalid JWT".to_string(),
+            "Invalid JWT".to_string(),
+            "Invalid JWT".to_string(),
+        );
+    }
+
+    // Decode header
+    let header = match general_purpose::URL_SAFE_NO_PAD.decode(parts[0]) {
+        Ok(decoded) => match String::from_utf8(decoded) {
+            Ok(header_str) => {
+                // Pretty print JSON
+                match serde_json::from_str::<serde_json::Value>(&header_str) {
+                    Ok(json) => serde_json::to_string_pretty(&json).unwrap_or(header_str),
+                    Err(_) => header_str,
+                }
+            }
+            Err(_) => "Invalid header encoding".to_string(),
+        },
+        Err(_) => "Invalid header base64".to_string(),
+    };
+
+    // Decode payload
+    let payload = match general_purpose::URL_SAFE_NO_PAD.decode(parts[1]) {
+        Ok(decoded) => match String::from_utf8(decoded) {
+            Ok(payload_str) => {
+                // Pretty print JSON
+                match serde_json::from_str::<serde_json::Value>(&payload_str) {
+                    Ok(json) => serde_json::to_string_pretty(&json).unwrap_or(payload_str),
+                    Err(_) => payload_str,
+                }
+            }
+            Err(_) => "Invalid payload encoding".to_string(),
+        },
+        Err(_) => "Invalid payload base64".to_string(),
+    };
+
+    let signature = parts[2].to_string();
+
+    (header, payload, signature)
+}
+
+/// Helper function to create IndexTemplate with pre-loaded JWKS and metadata
+fn create_template_with_defaults(state: &AppState, active_tab: &str) -> IndexTemplate {
+    // Pre-load JWKS
+    let jwks_json = state
+        .jwks
+        .to_json()
+        .map(|json| {
+            serde_json::to_string_pretty(&json)
+                .unwrap_or_else(|_| "Failed to format JWKS".to_string())
+        })
+        .unwrap_or_else(|_| "Error: Failed to get JWKS".to_string());
+
+    // Pre-load metadata
+    let metadata_json = state
+        .client_metadata
+        .to_json()
+        .map(|json| {
+            serde_json::to_string_pretty(&json)
+                .unwrap_or_else(|_| "Failed to format metadata".to_string())
+        })
+        .unwrap_or_else(|_| "Error: Failed to get metadata".to_string());
+
+    IndexTemplate {
+        active_tab: active_tab.to_string(),
+        has_token_result: false,
+        token_result: TokenResponse::default(),
+        jwks_result: jwks_json,
+        metadata_result: metadata_json,
+    }
 }
 
 /// Application state containing shared components
@@ -204,6 +361,18 @@ pub fn create_app() -> Router {
 
 pub fn create_app_with_state(state: AppState) -> Router {
     Router::new()
+        // Main navigation routes
+        .route("/", get(tokens_tab))
+        .route("/tokens", get(tokens_tab))
+        .route("/metadata", get(metadata_tab))
+        .route("/jwks-tab", get(jwks_tab))
+        // Form submission routes
+        .route("/generate-jwt", post(generate_jwt_form))
+        .route(
+            "/generate-metadata-token",
+            post(generate_metadata_token_form),
+        )
+        // API routes
         .route("/health", get(health_check))
         .route("/client-id-document-token", post(token_endpoint))
         .route("/private-key-jwt-token", post(jwt_endpoint))
@@ -229,7 +398,7 @@ pub async fn token_endpoint(
 ) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
     let params = extract_json_or_default::<TokenParams>(request).await?;
     // OAuth client metadata token - uses public URL as iss/sub, with optional customization
-    let scope = params.scope.or_else(|| Some("read write".to_string()));
+    let scope = params.scope;
 
     match state
         .jwt_issuer
@@ -255,7 +424,7 @@ pub async fn jwt_endpoint(
 ) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
     let params = extract_json_or_default::<JwtParams>(request).await?;
     // Custom JWT for private_key_jwt - allows client_id customization
-    let scope = params.scope.or_else(|| Some("read write".to_string()));
+    let scope = params.scope;
 
     match state
         .jwt_issuer
@@ -301,6 +470,109 @@ pub async fn jwks_endpoint(State(state): State<AppState>) -> (StatusCode, Json<V
     }
 }
 
+// Template-based handlers
+
+pub async fn tokens_tab(State(state): State<AppState>) -> IndexTemplate {
+    create_template_with_defaults(&state, "tokens")
+}
+
+pub async fn metadata_tab(State(state): State<AppState>) -> IndexTemplate {
+    create_template_with_defaults(&state, "metadata")
+}
+
+pub async fn jwks_tab(State(state): State<AppState>) -> IndexTemplate {
+    create_template_with_defaults(&state, "jwks")
+}
+
+pub async fn generate_jwt_form(
+    State(state): State<AppState>,
+    Form(params): Form<JwtFormParams>,
+) -> IndexTemplate {
+    // Create JWT token
+    let jwt_params = JwtParams {
+        client_id: params.client_id.clone(),
+        scope: params.scope.clone(),
+        aud: None,
+    };
+
+    let mut template = create_template_with_defaults(&state, "tokens");
+
+    match state
+        .jwt_issuer
+        .create_client_credentials_response_with_audience(
+            jwt_params.scope.clone(),
+            jwt_params.client_id.clone(),
+            jwt_params.aud.clone(),
+        ) {
+        Ok(response) => {
+            // Decode JWT into parts
+            let (header, payload, signature) = decode_jwt_parts(&response.access_token);
+
+            let expires_in = response.expires_in.unwrap_or(3600);
+            template.has_token_result = true;
+            template.token_result = TokenResponse {
+                access_token: response.access_token,
+                token_type: response.token_type,
+                expires_in,
+                expires_at: calculate_expires_at(expires_in),
+                scope: response.scope,
+                jwt_header: header,
+                jwt_payload: payload,
+                jwt_signature: signature,
+            };
+        }
+        Err(_) => {
+            // Keep template with defaults, maybe add error handling later
+        }
+    }
+
+    template
+}
+
+pub async fn generate_metadata_token_form(
+    State(state): State<AppState>,
+    Form(params): Form<TokenFormParams>,
+) -> IndexTemplate {
+    // Create metadata token
+    let token_params = TokenParams {
+        scope: params.scope.clone(),
+        aud: None,
+    };
+
+    let mut template = create_template_with_defaults(&state, "tokens");
+
+    match state
+        .jwt_issuer
+        .create_client_credentials_response_with_audience(
+            token_params.scope.clone(),
+            None,
+            token_params.aud.clone(),
+        ) {
+        Ok(response) => {
+            // Decode JWT into parts
+            let (header, payload, signature) = decode_jwt_parts(&response.access_token);
+
+            let expires_in = response.expires_in.unwrap_or(3600);
+            template.has_token_result = true;
+            template.token_result = TokenResponse {
+                access_token: response.access_token,
+                token_type: response.token_type,
+                expires_in,
+                expires_at: calculate_expires_at(expires_in),
+                scope: response.scope,
+                jwt_header: header,
+                jwt_payload: payload,
+                jwt_signature: signature,
+            };
+        }
+        Err(_) => {
+            // Keep template with defaults, maybe add error handling later
+        }
+    }
+
+    template
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,7 +605,7 @@ mod tests {
         let json: Value = response.json();
         assert_eq!(json["token_type"], "Bearer");
         assert_eq!(json["expires_in"], 3600);
-        assert_eq!(json["scope"], "read write");
+        assert!(json["scope"].is_null());
     }
 
     #[tokio::test]
@@ -354,7 +626,11 @@ mod tests {
         let app = create_app();
         let server = TestServer::new(app).unwrap();
 
-        let response = server.get("/jwks").await;
+        // Test API endpoint with JSON Accept header
+        let response = server
+            .get("/jwks")
+            .add_header("Accept", "application/json")
+            .await;
         response.assert_status_ok();
 
         let json: Value = response.json();
@@ -425,7 +701,7 @@ mod tests {
         let json: Value = response.json();
         assert_eq!(json["token_type"], "Bearer");
         assert_eq!(json["expires_in"], 3600);
-        assert_eq!(json["scope"], "read write");
+        assert!(json["scope"].is_null());
     }
 
     #[tokio::test]
@@ -452,8 +728,8 @@ mod tests {
         // Both should return valid JWT responses
         assert_eq!(token_json["token_type"], "Bearer");
         assert_eq!(jwt_json["token_type"], "Bearer");
-        assert_eq!(token_json["scope"], "read write");
-        assert_eq!(jwt_json["scope"], "read write");
+        assert!(token_json["scope"].is_null());
+        assert!(jwt_json["scope"].is_null());
     }
 
     #[tokio::test]
@@ -547,7 +823,7 @@ mod tests {
 
         let json: Value = response.json();
         assert_eq!(json["token_type"], "Bearer");
-        assert_eq!(json["scope"], "read write");
+        assert!(json["scope"].is_null());
     }
 
     #[tokio::test]
@@ -573,7 +849,7 @@ mod tests {
 
         let json: Value = response.json();
         assert_eq!(json["token_type"], "Bearer");
-        assert_eq!(json["scope"], "read write");
+        assert!(json["scope"].is_null());
     }
 
     #[tokio::test]
@@ -629,7 +905,7 @@ mod tests {
         let json: Value = response.json();
         assert_eq!(json["token_type"], "Bearer");
         assert_eq!(json["expires_in"], 3600);
-        assert_eq!(json["scope"], "read write");
+        assert!(json["scope"].is_null());
 
         // Test JWT endpoint with no body
         let response = server.post("/private-key-jwt-token").await;
@@ -638,7 +914,7 @@ mod tests {
         let json: Value = response.json();
         assert_eq!(json["token_type"], "Bearer");
         assert_eq!(json["expires_in"], 3600);
-        assert_eq!(json["scope"], "read write");
+        assert!(json["scope"].is_null());
     }
 
     #[tokio::test]
