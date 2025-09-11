@@ -76,12 +76,12 @@ The client metadata document is published at the `/oauth-client` endpoint and co
 
 ```json
 {
-  "client_id": "oauth-client-id-metadata-example",
+  "client_id": "https://oauth-client.example.com/oauth-client",
   "client_name": "OAuth Client ID Metadata Example",
   "grant_types": ["client_credentials"],
   "token_endpoint_auth_method": "private_key_jwt", 
   "token_endpoint_auth_signing_alg": "RS256",
-  "jwks_uri": "http://localhost:3002/jwks",
+  "jwks_uri": "https://oauth-client.example.com/jwks",
   "scope": "read write"
 }
 ```
@@ -105,7 +105,7 @@ The client authentication process follows these steps:
 1. **Trust Establishment**: Authorization server can trust clients based on their ability to serve metadata from their declared identity URL
 2. **Metadata Discovery**: Authorization server discovers client metadata from the published metadata document at the client's URL
 3. **Key Distribution**: Authorization server retrieves client public keys from the JWKS endpoint referenced in the metadata
-4. **Authentication**: Client requests access token using its service identity (iss = sub = service URL)
+4. **Authentication**: Client requests access token using its service identity (iss = sub = client_id URL)
 5. **Verification**: Authorization server verifies client identity through metadata validation and JWT signature verification using private_key_jwt as the asymmetric authentication method
 
 This approach is particularly beneficial for scenarios where clients need to be trusted based on their published identity (such as in MCP implementations) rather than through explicit registration processes.

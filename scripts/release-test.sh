@@ -84,8 +84,8 @@ else
 fi
 echo ""
 
-# 2. Default token
-echo -e "${YELLOW}2. Default token (uses PUBLIC_URL for iss/sub):${NC}"
+# 2. Default token  
+echo -e "${YELLOW}2. Default token (uses client_id URL for iss/sub):${NC}"
 DEFAULT_TOKEN=$(curl -s -X POST "$SERVICE_URL/client-id-document-token" | jq -r .access_token)
 echo "Token payload:"
 DEFAULT_PAYLOAD=$(decode_jwt_payload "$DEFAULT_TOKEN")
@@ -95,10 +95,11 @@ echo ""
 # Verify default token claims
 ISS=$(echo "$DEFAULT_PAYLOAD" | jq -r .iss)
 SUB=$(echo "$DEFAULT_PAYLOAD" | jq -r .sub)
-if [ "$ISS" = "$SERVICE_URL" ] && [ "$SUB" = "$SERVICE_URL" ]; then
-  echo -e "${GREEN}✅ Default token correctly uses PUBLIC_URL${NC}"
+EXPECTED_CLIENT_ID="${SERVICE_URL}/oauth-client"
+if [ "$ISS" = "$EXPECTED_CLIENT_ID" ] && [ "$SUB" = "$EXPECTED_CLIENT_ID" ]; then
+  echo -e "${GREEN}✅ Default token correctly uses client_id URL${NC}"
 else
-  echo -e "${RED}❌ Default token iss/sub incorrect: iss=$ISS, sub=$SUB (expected: $SERVICE_URL)${NC}"
+  echo -e "${RED}❌ Default token iss/sub incorrect: iss=$ISS, sub=$SUB (expected: $EXPECTED_CLIENT_ID)${NC}"
   exit 1
 fi
 echo ""
@@ -168,7 +169,7 @@ echo ""
 echo -e "${BLUE}Summary:${NC}"
 echo "✅ Service is running and accessible"
 echo "✅ Health check endpoint working"
-echo "✅ Default token uses PUBLIC_URL for iss/sub"
+echo "✅ Default token uses client_id URL for iss/sub"
 echo "✅ Custom client_id JWT overrides iss/sub claims"
 echo "✅ JWKS endpoint provides RSA public keys"
 echo "✅ OAuth metadata endpoint working"

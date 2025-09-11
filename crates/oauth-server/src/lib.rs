@@ -273,10 +273,9 @@ impl AppState {
             JwtIssuer::new_with_audience(key_manager.clone(), public_url.clone(), audience);
 
         let jwks_uri = format!("{}/jwks", public_url);
-        let client_metadata = OAuthClientMetadata::default_client_credentials(
-            "oauth-client-id-metadata-example",
-            &jwks_uri,
-        );
+        let client_id = format!("{}/oauth-client", public_url);
+        let client_metadata =
+            OAuthClientMetadata::default_client_credentials(&client_id, &jwks_uri);
 
         let jwks = JsonWebKeySet::from_key_manager(&key_manager)?;
 
@@ -298,10 +297,9 @@ impl AppState {
             JwtIssuer::new_with_audience(key_manager.clone(), public_url.clone(), audience);
 
         let jwks_uri = format!("{}/jwks", public_url);
-        let client_metadata = OAuthClientMetadata::default_client_credentials(
-            "oauth-client-id-metadata-example",
-            &jwks_uri,
-        );
+        let client_id = format!("{}/oauth-client", public_url);
+        let client_metadata =
+            OAuthClientMetadata::default_client_credentials(&client_id, &jwks_uri);
 
         let jwks = JsonWebKeySet::from_key_manager(&key_manager)?;
 
@@ -397,12 +395,13 @@ pub async fn token_endpoint(
     request: Request,
 ) -> Result<(StatusCode, Json<Value>), (StatusCode, Json<Value>)> {
     let params = extract_json_or_default::<TokenParams>(request).await?;
-    // OAuth client metadata token - uses public URL as iss/sub, with optional customization
+    // OAuth client metadata token - uses client_id as iss/sub per Client ID Metadata Document spec
     let scope = params.scope;
+    let client_id = state.client_metadata.client_id.clone();
 
     match state
         .jwt_issuer
-        .create_client_credentials_response_with_audience(scope, None, params.aud)
+        .create_client_credentials_response_with_audience(scope, Some(client_id), params.aud)
     {
         Ok(response) => Ok((
             StatusCode::OK,
@@ -540,12 +539,13 @@ pub async fn generate_metadata_token_form(
     };
 
     let mut template = create_template_with_defaults(&state, "tokens");
+    let client_id = state.client_metadata.client_id.clone();
 
     match state
         .jwt_issuer
         .create_client_credentials_response_with_audience(
             token_params.scope.clone(),
-            None,
+            Some(client_id),
             token_params.aud.clone(),
         ) {
         Ok(response) => {
@@ -617,7 +617,7 @@ mod tests {
         response.assert_status_ok();
 
         let json: Value = response.json();
-        assert_eq!(json["client_id"], "oauth-client-id-metadata-example");
+        assert_eq!(json["client_id"], "http://localhost:3000/oauth-client");
         assert_eq!(json["token_endpoint_auth_signing_alg"], "RS256");
     }
 
@@ -653,7 +653,7 @@ mod tests {
         response.assert_status_ok();
 
         let json: Value = response.json();
-        assert_eq!(json["client_id"], "oauth-client-id-metadata-example");
+        assert_eq!(json["client_id"], "https://api.example.com/oauth-client");
 
         // The jwks_uri should contain the custom URL
         let jwks_uri = json["jwks_uri"].as_str().unwrap();

@@ -183,11 +183,11 @@ mod tests {
     #[test]
     fn test_default_client_credentials() {
         let metadata = OAuthClientMetadata::default_client_credentials(
-            "oauth-client-id-metadata-example",
+            "http://localhost:3000/oauth-client",
             "http://localhost:3000/jwks",
         );
 
-        assert_eq!(metadata.client_id, "oauth-client-id-metadata-example");
+        assert_eq!(metadata.client_id, "http://localhost:3000/oauth-client");
         assert_eq!(
             metadata.client_name,
             Some("OAuth Client ID Metadata Example".to_string())
