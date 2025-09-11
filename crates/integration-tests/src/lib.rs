@@ -41,7 +41,7 @@ mod tests {
         let response = server.get("/oauth-client").await;
         response.assert_status_ok();
         let metadata: Value = response.json();
-        assert_eq!(metadata["client_id"], "oauth-client-id-metadata-example");
+        assert_eq!(metadata["client_id"], "http://localhost:3000/oauth-client");
         assert_eq!(metadata["grant_types"][0], "client_credentials");
         assert_eq!(metadata["token_endpoint_auth_method"], "private_key_jwt");
         assert_eq!(metadata["token_endpoint_auth_signing_alg"], "RS256");
