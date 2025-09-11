@@ -50,7 +50,7 @@ uuid = { version = "1.0", features = ["v4"] }
 
 # Tracing
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }
