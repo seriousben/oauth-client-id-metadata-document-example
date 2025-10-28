@@ -1048,41 +1048,116 @@
             // Remove active class from all nav tabs
             const navTabs = document.querySelectorAll('.nav-tab');
             navTabs.forEach(tab => tab.classList.remove('active'));
-            
+
             // Remove active class from all tab content
             const tabContents = document.querySelectorAll('.tab-content');
             tabContents.forEach(content => content.classList.remove('active'));
-            
+
             // Add active class to clicked tab
-            event.target.classList.add('active');
-            
+            if (event && event.target) {
+                event.target.classList.add('active');
+            } else {
+                // When called programmatically, find the matching button
+                const matchingButton = Array.from(navTabs).find(tab => {
+                    const onclick = tab.getAttribute('onclick');
+                    return onclick && onclick.includes(`'${contentId}'`);
+                });
+                if (matchingButton) {
+                    matchingButton.classList.add('active');
+                }
+            }
+
             // Show the target content
             const targetContent = document.getElementById(contentId);
             if (targetContent) {
                 targetContent.classList.add('active');
             }
-            
-            // Optional: Update URL without page reload for better UX
+
+            // Update URL without page reload for better UX
             if (url && history.pushState) {
-                history.pushState(null, null, url);
+                history.pushState({tab: contentId, url: url}, null, url);
             }
         }
         
-        // Legacy function for backward compatibility (remove old tab switching)
-        function switchTab(event, tabId) {
-            // This function is no longer used but keeping it to avoid errors
+        // Map URL paths to tab content IDs
+        function getTabFromUrl(url) {
+            const path = url || window.location.pathname;
+            const tabMap = {
+                '/tokens': 'tokens-content',
+                '/metadata': 'metadata-content',
+                '/jwks-tab': 'jwks-content',
+                '/': 'tokens-content'
+            };
+            return tabMap[path] || 'tokens-content';
         }
-        
-        // Add hidden content containers for copy functionality
+
+        // Handle browser back/forward buttons
+        window.addEventListener('popstate', (event) => {
+            const contentId = event.state?.tab || getTabFromUrl();
+            const url = event.state?.url || window.location.pathname;
+
+            // Switch to the tab without creating a new history entry
+            const navTabs = document.querySelectorAll('.nav-tab');
+            navTabs.forEach(tab => tab.classList.remove('active'));
+
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(content => content.classList.remove('active'));
+
+            // Activate the correct tab button
+            const matchingButton = Array.from(navTabs).find(tab => {
+                const onclick = tab.getAttribute('onclick');
+                return onclick && onclick.includes(`'${contentId}'`);
+            });
+            if (matchingButton) {
+                matchingButton.classList.add('active');
+            }
+
+            // Activate the correct content
+            const targetContent = document.getElementById(contentId);
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+        });
+
+        // Initialize correct tab on page load and preserve form state
         document.addEventListener('DOMContentLoaded', () => {
-            const jwksDisplay = document.querySelector('.result-card h3:contains("JWKS") + .json-display');
-            if (jwksDisplay) {
-                jwksDisplay.id = 'jwks-content';
+            // Set initial history state if not already set
+            if (!history.state) {
+                const contentId = getTabFromUrl();
+                const url = window.location.pathname;
+                history.replaceState({tab: contentId, url: url}, null, url);
             }
-            
-            const metadataDisplay = document.querySelector('.result-card h3:contains("Metadata") + .json-display');
-            if (metadataDisplay) {
-                metadataDisplay.id = 'metadata-content';
+
+            // Restore form values from sessionStorage
+            const clientIdInput = document.getElementById('client_id');
+            const scopeInput = document.getElementById('scope');
+            const metadataScopeInput = document.getElementById('metadata_scope');
+
+            if (clientIdInput) {
+                const savedClientId = sessionStorage.getItem('client_id');
+                if (savedClientId) clientIdInput.value = savedClientId;
+
+                clientIdInput.addEventListener('input', (e) => {
+                    sessionStorage.setItem('client_id', e.target.value);
+                });
+            }
+
+            if (scopeInput) {
+                const savedScope = sessionStorage.getItem('scope');
+                if (savedScope) scopeInput.value = savedScope;
+
+                scopeInput.addEventListener('input', (e) => {
+                    sessionStorage.setItem('scope', e.target.value);
+                });
+            }
+
+            if (metadataScopeInput) {
+                const savedMetadataScope = sessionStorage.getItem('metadata_scope');
+                if (savedMetadataScope) metadataScopeInput.value = savedMetadataScope;
+
+                metadataScopeInput.addEventListener('input', (e) => {
+                    sessionStorage.setItem('metadata_scope', e.target.value);
+                });
             }
         });
     </script>
