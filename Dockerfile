@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.89.0 AS builder
+FROM rust:1.91.1 AS builder
 
 # Install cargo-chef for dependency caching
 RUN cargo install cargo-chef
